@@ -89,6 +89,7 @@ sympy==1.11.1
 tensorboard==2.14.0
 tensorboard-data-server==0.7.1
 tokenizers==0.13.3
+--find-links https://download.pytorch.org/whl/cu118
 torch==2.0.1+cu118
 torch-tb-profiler==0.4.1
 torchaudio==2.0.2+cu118

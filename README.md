@@ -1,4 +1,5 @@
 ### File structure
+'''
 ├── data
 │   ├── training_images
 │   ├── dev_images
@@ -19,7 +20,7 @@
 ├── README.md
 ├── requirements.txt
 └── .gitignore
-
+'''
 ### ToDo
 - encoders.py contains layers/custom layers etc
 - model.py contains final complete net (all language/vision encoders and final vision-language decoders/auxilary modules)

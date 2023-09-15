@@ -25,7 +25,7 @@ class DropPath(nn.Module):
         output = x.div(keep_prob) * random_tensor
         return output
     
-class Mlp(nn.Module):
+class FNN(nn.Module):
     def __init__(
         self,
         in_features,
@@ -121,7 +121,7 @@ class Block(nn.Module):
         self,
         dim,
         num_heads,
-        mlp_ratio=4.0,
+        fnn_ratio=4.0,
         qkv_bias=False,
         qk_scale=None,
         drop=0.0,
@@ -149,29 +149,29 @@ class Block(nn.Module):
         # NOTE: Can change to dropout / droppath used in original vlmo src code
         self.drop_path = DropPath(drop_path) if drop_path > 0.0 else nn.Identity()
         self.norm2_text = norm_layer(dim)
-        # self.norm2_imag = norm_layer(dim)
-        mlp_hidden_dim = int(dim * mlp_ratio)
-        self.mlp_text = Mlp(
+        self.norm2_img = norm_layer(dim)
+        fnn_hidden_dim = int(dim * fnn_ratio)
+        self.fnn_text = FNN(
             in_features=dim,
-            hidden_features=mlp_hidden_dim,
+            hidden_features=fnn_hidden_dim,
             act_layer=act_layer,
             drop=drop,
         )
-        # self.mlp_imag = Mlp(
-        #     in_features=dim,
-        #     hidden_features=mlp_hidden_dim,
-        #     act_layer=act_layer,
-        #     drop=drop,
-        # )
-        # self.mlp_vl = None
-        # if with_vlffn:
-        #     self.mlp_vl = Mlp(
-        #         in_features=dim,
-        #         hidden_features=mlp_hidden_dim,
-        #         act_layer=act_layer,
-        #         drop=drop,
-        #     )
-        #     self.norm2_vl = norm_layer(dim)
+        self.fnn_img = FNN(
+            in_features=dim,
+            hidden_features=fnn_hidden_dim,
+            act_layer=act_layer,
+            drop=drop,
+        )
+        self.fnn_vl = None
+        if with_vlffn:
+            self.fnn_vl = FNN(
+                in_features=dim,
+                hidden_features=fnn_hidden_dim,
+                act_layer=act_layer,
+                drop=drop,
+            )
+            self.norm2_vl = norm_layer(dim)
     
         self.gamma_1 = \
             nn.Parameter(layer_scale_init_values * torch.ones((dim)),requires_grad=True) \
@@ -187,17 +187,17 @@ class Block(nn.Module):
         # x = x + self.drop_path(self.gamma_1 * self.attn_v2(self.norm1(x), self.norm1(x), self.norm1(x), ))
 
         if modality_type == "text":
-            x = x + self.drop_path(self.gamma_2 * self.mlp_text(self.norm2_text(x))) 
+            x = x + self.drop_path(self.gamma_2 * self.fnn_text(self.norm2_text(x))) 
         # elif modality_type == "image":
-        #     x = x + self.drop_path(self.gamma_2 * self.mlp_imag(self.norm2_imag(x))) 
+        #     x = x + self.drop_path(self.gamma_2 * self.fnn_img(self.norm2_img(x))) 
         else:
-            if self.mlp_vl is None:
+            if self.fnn_vl is None:
                 x_text = x[:, : self.max_text_len]
-                x_imag = x[:, self.max_text_len :]
-                x_text = x_text + self.drop_path(self.gamma_2 * self.mlp_text(self.norm2_text(x_text)))
-                x_imag = x_imag + self.drop_path(self.gamma_2 * self.mlp_imag(self.norm2_imag(x_imag)))
-                x = torch.cat([x_text, x_imag], dim=1)
+                x_img = x[:, self.max_text_len :]
+                x_text = x_text + self.drop_path(self.gamma_2 * self.fnn_text(self.norm2_text(x_text)))
+                x_img = x_img + self.drop_path(self.gamma_2 * self.fnn_img(self.norm2_img(x_img)))
+                x = torch.cat([x_text, x_img, dim=1)
             else:
-                x = x + self.drop_path(self.gamma_2 * self.mlp_vl(self.norm2_vl(x)))
+                x = x + self.drop_path(self.gamma_2 * self.fnn_vl(self.norm2_vl(x)))
 
         return x

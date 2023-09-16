@@ -26,6 +26,7 @@ fastapi==0.103.1
 filelock==3.9.0
 frozenlist==1.4.0
 fsspec==2023.9.0
+gdown==4.7.1
 gitdb==4.0.10
 GitPython==3.1.35
 google-auth==2.22.0
@@ -66,6 +67,7 @@ pydantic==2.1.1
 pydantic_core==2.4.0
 Pygments==2.16.1
 PyJWT==2.8.0
+PySocks==1.7.1
 pytest==7.4.2
 python-dateutil==2.8.2
 python-editor==1.0.4

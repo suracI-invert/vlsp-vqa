@@ -8,13 +8,13 @@
 ├── src
 │   ├── dataset
 │   │   ├── components
-│   ├── views
 │   ├── model
 │   │   ├── components
 │   │   │   ├── language
 │   │   │   │   ├── encoders.py
 │   │   │   ├── vision
 │   │   │   │   ├── encoders.py
+│   │   │   │   attentions.py
 │   │   ├── model.py
 │   ├── utils
 ├── README.md

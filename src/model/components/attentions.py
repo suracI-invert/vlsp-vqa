@@ -188,15 +188,15 @@ class Block(nn.Module):
 
         if modality_type == "text":
             x = x + self.drop_path(self.gamma_2 * self.fnn_text(self.norm2_text(x))) 
-        # elif modality_type == "image":
-        #     x = x + self.drop_path(self.gamma_2 * self.fnn_img(self.norm2_img(x))) 
+        elif modality_type == "image":
+            x = x + self.drop_path(self.gamma_2 * self.fnn_img(self.norm2_img(x))) 
         else:
             if self.fnn_vl is None:
                 x_text = x[:, : self.max_text_len]
                 x_img = x[:, self.max_text_len :]
                 x_text = x_text + self.drop_path(self.gamma_2 * self.fnn_text(self.norm2_text(x_text)))
                 x_img = x_img + self.drop_path(self.gamma_2 * self.fnn_img(self.norm2_img(x_img)))
-                x = torch.cat([x_text, x_img, dim=1)
+                x = torch.cat([x_text, x_img], dim=1)
             else:
                 x = x + self.drop_path(self.gamma_2 * self.fnn_vl(self.norm2_vl(x)))
 

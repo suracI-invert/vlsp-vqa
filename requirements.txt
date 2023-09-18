@@ -97,7 +97,8 @@ tensorboard==2.14.0
 tensorboard-data-server==0.7.1
 tokenizers==0.13.3
 tomli==2.0.1
-torch==2.0.1+cu118 --global-option="-f https://download.pytorch.org/whl/torch_stable.html"
+-f https://download.pytorch.org/whl/torch_stable.html
+torch==2.0.1+cu118 
 torch-tb-profiler==0.4.1
 torchaudio==2.0.2+cu118
 torchmetrics==1.1.1

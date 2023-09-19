@@ -9,7 +9,7 @@ class ViT5Encoder(Module):
     """
     def __init__(
         self,
-        pretrained = 'VietAI/vit5-large', # Can change to large or base
+        pretrained = 'VietAI/vit5-base', # Can change to large or base
         max_length = 128,
     ) -> None:
         super().__init__()

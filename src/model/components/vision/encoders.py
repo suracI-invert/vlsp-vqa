@@ -17,9 +17,6 @@ from transformers import (
     logging
 )
 
-from sklearn.metrics import accuracy_score, f1_score
-
-
 class ImageEncoderViT(nn.Module):
     def __init__(self, pretrained_image_name: str = "microsoft/beit-base-patch16-224"):
         super(ImageEncoderViT, self).__init__()
@@ -32,7 +29,7 @@ class ImageEncoderViT(nn.Module):
             return_tensors="pt",
         )
         return {
-            "pixel_values": processed_images['pixel_values'].squeeze(),
+            "pixel_values": processed_images['pixel_values'],
         }
     
     def forward(self, images):

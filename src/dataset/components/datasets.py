@@ -44,7 +44,7 @@ class VQADataset(Dataset):
         return {
             'img_fname': img_path,
             'img': img,
-            'quesion': question,
+            'question': question,
             'answer': answer
         }
         

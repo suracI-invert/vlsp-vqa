@@ -85,9 +85,9 @@ class Attention(nn.Module):
         qkv_bias = None
         if self.q_bias is not None:
             qkv_bias = torch.cat((self.q_bias, torch.zeros_like(self.v_bias, requires_grad=False), self.v_bias))
-        print('Weights shape: ', self.qkv.weight.shape)
+        # print('Weights shape: ', self.qkv.weight.shape)
         qkv = F.linear(input=x, weight=self.qkv.weight, bias=qkv_bias)
-        print('QKV shape: ', qkv.shape)
+        # print('QKV shape: ', qkv.shape)
         qkv = qkv.reshape(B, N, 3, self.num_heads, -1).permute(2, 0, 3, 1, 4)
 
         q, k, v = (
@@ -95,9 +95,9 @@ class Attention(nn.Module):
             qkv[1],
             qkv[2],
         )  # make torchscript happy (cannot use tensor as tuple)
-        print('Query Shape: ', q.shape)
-        print('Key Shape: ', k.shape)
-        print('Value Shape: ', v.shape)
+        # print('Query Shape: ', q.shape)
+        # print('Key Shape: ', k.shape)
+        # print('Value Shape: ', v.shape)
         q = q * self.scale
         attn = (q.float() @ k.float().transpose(-2, -1))
         
@@ -134,7 +134,7 @@ class Block(nn.Module):
         max_text_len=40,
     ):
         super().__init__()
-        self.norm1 = norm_layer(dim)
+        self.norm1 = nn.LayerNorm(dim)
         self.attn = Attention(
             dim,
             num_heads=num_heads,
@@ -148,8 +148,8 @@ class Block(nn.Module):
         # )
         # NOTE: Can change to dropout / droppath used in original vlmo src code
         self.drop_path = DropPath(drop_path) if drop_path > 0.0 else nn.Identity()
-        self.norm2_text = norm_layer(dim)
-        self.norm2_img = norm_layer(dim)
+        self.norm2_text = nn.LayerNorm(dim)
+        self.norm2_img = nn.LayerNorm(dim)
         fnn_hidden_dim = int(dim * fnn_ratio)
         self.fnn_text = FNN(
             in_features=dim,
@@ -171,7 +171,7 @@ class Block(nn.Module):
                 act_layer=act_layer,
                 drop=drop,
             )
-            self.norm2_vl = norm_layer(dim)
+            self.norm2_vl = nn.LayerNorm(dim)
     
         self.gamma_1 = \
             nn.Parameter(layer_scale_init_values * torch.ones((dim)),requires_grad=True) \

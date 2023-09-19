@@ -55,12 +55,14 @@ class EfficientNetEncoder(nn.Module):
     def forward(self, images):
         """
         - input: image
-        - output shape: (batch_size, feature_map_size, hidden_size) [1, 1200, 1280]
+        - output shape: (batch_size, feature_map_size, hidden_size) [1, feature_map_size, 1280]
         """
+        images = torch.stack(images)
         batch_size, c, h, w = images.shape
-        
+
         x_resized_1 = images.view(batch_size , c, h, w)
         fmap = self.model(x_resized_1)
+        
         batch_size, dim, h, w = fmap.shape
         fmap = fmap.view(batch_size, h * w, dim)
         #print(fmap.shape)

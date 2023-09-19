@@ -25,13 +25,18 @@ class ViT5Encoder(Module):
         vit5_encoding = self.tokenizer(text, return_tensors = "pt", padding = 'max_length', max_length= self.max_length) 
         # Chưa biết có cần thêm max_length = 1024 khum, nếu thêm thì seq_len = 1024
         vit5_input_ids, vit5_attention_masks = vit5_encoding["input_ids"], vit5_encoding["attention_mask"]
+
         outputs = self.model.encoder(
-            input_ids = vit5_input_ids,
-            attention_mask = vit5_attention_masks,
+            input_ids = vit5_input_ids.to(self.model.device),
+            attention_mask = vit5_attention_masks.to(self.model.device),
             return_dict = True
         )
 
         return outputs.last_hidden_state
+    
+    def freeze(self):
+        for param in self.model.parameters():
+            param.requires_grad = False
 
 
 class BARTphoEncoder(Module):

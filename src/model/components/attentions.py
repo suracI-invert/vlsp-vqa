@@ -128,7 +128,7 @@ class Block(nn.Module):
         attn_drop=0.0,
         drop_path=0.0,
         act_layer=nn.GELU,
-        norm_layer=nn.LayerNorm,
+        # norm_layer=nn.LayerNorm,
         with_vlffn=False,
         layer_scale_init_values=0.1,
         max_text_len=40,

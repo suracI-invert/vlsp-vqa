@@ -33,7 +33,7 @@ if __name__ == '__main__':
         'dev-images', 
         'vlsp2023_dev_data.json', 
         transforms= transforms.Compose([transforms.Resize((224, 224)), transforms.ToTensor()]), 
-        batch_size= 2,
+        batch_size= 16,
         train_val_split= (28000, 2833)
     )
     dm.setup()

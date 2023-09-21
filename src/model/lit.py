@@ -81,7 +81,7 @@ class VQALitModule(LightningModule):
         loss, logits = self.model_step(batch)
         # update and log metrics
         self.train_loss(loss)
-        self.log("train/loss", self.train_loss, on_step=False, on_epoch=True, prog_bar=True)
+        self.log("train/loss", self.train_loss, on_step=True, prog_bar=True)
 
         # return loss or backpropagation will fail
         return loss
@@ -105,7 +105,7 @@ class VQALitModule(LightningModule):
         self.val_bleu_3(preds, targets)
         self.val_bleu_4(preds, targets)
 
-        self.log("val/loss", self.val_loss, on_step=False, on_epoch=True, prog_bar=True)
+        self.log("val/loss", self.val_loss, on_step=True, on_epoch=True, prog_bar=True)
         self.log("val/bleu_1", self.val_bleu_1, on_step=False, on_epoch=True, prog_bar=True)
         self.log("val/bleu_2", self.val_bleu_2, on_step=False, on_epoch=True, prog_bar=True)
         self.log("val/bleu_3", self.val_bleu_3, on_step=False, on_epoch=True, prog_bar=True)

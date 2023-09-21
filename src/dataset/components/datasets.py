@@ -39,13 +39,16 @@ class VQADataset(Dataset):
             img = pil_to_tensor(img)
         
         if self.tokenizer:
-            pass
+            question_tokenized = self.tokenizer(question, return_tensors = "pt", padding = 'max_length', max_length= self.max_length) 
+            answer_tokenized = self.tokenizer(answer, return_tensors = "pt", padding = 'max_length', max_length= self.max_length) 
 
         return {
             'img_fname': img_path,
             'img': img,
             'question': question,
-            'answer': answer
+            'tokenized_question': question_tokenized,
+            'answer': answer,
+            'tokenized_answer': answer_tokenized
         }
         
 

@@ -56,7 +56,11 @@ class BARTphoEncoder(Module):
         - input: input_ids
         - output shape: (batch_size, sequence_length, hidden_size) [1, max_length, 768] (768 for base, 1024 for large)
         """
+        # # Remove token_type_ids from the input dictionary [ONLY IF USE BARTPHO-WORD], tại trong MBart k có token_type_ids 
+        # input.pop('token_type_ids', None)
+
         outputs = self.model(**input)
         if self.hidden_dim != outputs.shape - 1:
             outputs = nn.Linear(outputs.shape - 1, self.hidden_dim)
+      
         return outputs.last_hidden_state

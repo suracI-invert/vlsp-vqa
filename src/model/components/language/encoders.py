@@ -27,6 +27,10 @@ class ViT5Encoder(Module):
         )
 
         return outputs.last_hidden_state
+    
+    def freeze(self):
+        for param in self.model.parameters():
+            param.requires_grad = False
 
 
 class BARTphoEncoder(Module):

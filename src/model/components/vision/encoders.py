@@ -21,25 +21,31 @@ class ImageEncoderViT(nn.Module):
     def __init__(self, pretrained_image_name: str = "microsoft/beit-base-patch16-224"):
         super(ImageEncoderViT, self).__init__()
         self.image_encoder = AutoModel.from_pretrained(pretrained_image_name)
-        self.preprocessor = AutoFeatureExtractor.from_pretrained(pretrained_image_name)
+        # self.preprocessor = AutoFeatureExtractor.from_pretrained(pretrained_image_name)
 
-    def preprocess_images(self, images):
-        processed_images = self.preprocessor(
-            images=images,
-            return_tensors="pt",
-        )
-        return {
-            "pixel_values": processed_images['pixel_values'],
-        }
+    #TODO: Cuda is not working -> preprocessor device mismatch (cpu) while image is in cuda
+    # def preprocess_images(self, images):
+    #     processed_images = self.preprocessor(
+    #         images=images,
+    #         return_tensors="pt",
+    #     )
+    #     return {
+    #         "pixel_values": processed_images['pixel_values'],
+    #     }
     
     def forward(self, images):
         """
         - input: image
         - output shape: (batch_size, sequence_length, hidden_size) [1, sequence_length, 768]
         """
-        processed_image = self.preprocess_images(images)
-        encoded_image = self.image_encoder(pixel_values=processed_image['pixel_values'], return_dict = True)
+        # processed_image = self.preprocess_images(images)
+        encoded_image = self.image_encoder(pixel_values= images, return_dict = True)
+        # encoded_image = self.image_encoder(pixel_values=processed_image['pixel_values'], return_dict = True)
         return encoded_image['last_hidden_state']
+    
+    def freeze(self):
+        for param in self.image_encoder.parameters():
+            param.requires_grad = False
 
 
 class EfficientNetEncoder(nn.Module):

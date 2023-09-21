@@ -3,7 +3,7 @@ from torchvision import transforms
 def ImageAugmentationViT():
     return transforms.Compose(
         [
-            transforms.RandomHorizontalFlip(),  # Đảo ngược ảnh theo chiều ngang
+            #transforms.RandomHorizontalFlip(),  # Đảo ngược ảnh theo chiều ngang
             transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1),  # Tăng cường màu sắc
             transforms.RandomRotation(degrees=15),  # Xoay ảnh một góc ngẫu nhiên
             transforms.Resize((224,224)),  # resize ảnh
@@ -20,7 +20,7 @@ def ImageAugmentationViT():
 def ImageAugmentationCNN():
     return transforms.Compose(
         [
-            transforms.RandomHorizontalFlip(),  # Đảo ngược ảnh theo chiều ngang
+            #transforms.RandomHorizontalFlip(),  # Đảo ngược ảnh theo chiều ngang
             transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1),  # Tăng cường màu sắc
             transforms.RandomRotation(degrees=15),  # Xoay ảnh một góc ngẫu nhiên
             transforms.Resize((224,224)),  # resize ảnh

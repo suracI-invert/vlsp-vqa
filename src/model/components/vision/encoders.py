@@ -20,11 +20,13 @@ from transformers import (
 from sklearn.metrics import accuracy_score, f1_score
 
 
-class ImageEncoderViT(nn.Module):
-    def __init__(self, pretrained_image_name: str = "microsoft/beit-base-patch16-224"):
-        super(ImageEncoderViT, self).__init__()
-        self.image_encoder = AutoModel.from_pretrained(pretrained_image_name)
-        self.preprocessor = AutoFeatureExtractor.from_pretrained(pretrained_image_name)
+class ImageProcessorViT:
+    def __init__(self, pretrained_model_name_or_path=None):
+        if pretrained_model_name_or_path is None:
+            # Use a default pre-trained Vision Transformer model
+            pretrained_model_name_or_path = "microsoft/beit-base-patch16-224"  # Change to the desired ViT model
+
+        self.preprocessor = AutoFeatureExtractor.from_pretrained(pretrained_model_name_or_path)
 
     def preprocess_images(self, images):
         processed_images = self.preprocessor(
@@ -32,16 +34,21 @@ class ImageEncoderViT(nn.Module):
             return_tensors="pt",
         )
         return {
-            "pixel_values": processed_images['pixel_values'].squeeze(),
+            "pixel_values": processed_images['pixel_values'],
         }
     
-    def forward(self, images):
+class ImageEncoderViT(nn.Module):
+    def __init__(self, pretrained_image_name: str = "microsoft/beit-base-patch16-224"):
+        super(ImageEncoderViT, self).__init__()
+        self.image_encoder = AutoModel.from_pretrained(pretrained_image_name)
+        #self.preprocessor = AutoFeatureExtractor.from_pretrained(pretrained_image_name)
+    
+    def forward(self, pixel_values):
         """
         - input: image
         - output shape: (batch_size, sequence_length, hidden_size) [1, sequence_length, 768]
         """
-        processed_image = self.preprocess_images(images)
-        encoded_image = self.image_encoder(pixel_values=processed_image['pixel_values'], return_dict = True)
+        encoded_image = self.image_encoder(pixel_values=pixel_values, return_dict=True)
         return encoded_image['last_hidden_state']
 
 

@@ -1,6 +1,6 @@
 from torchvision import transforms
 
-def ImageAugmentationViT():
+def ImageAugmentation():
     return transforms.Compose(
         [
             #transforms.RandomHorizontalFlip(),  # Đảo ngược ảnh theo chiều ngang
@@ -31,6 +31,6 @@ def ImageAugmentationCNN():
             transforms.RandomApply([transforms.GaussianBlur(kernel_size=5)], p=0.1),
             transforms.RandomApply([transforms.GaussianBlur(kernel_size=7)], p=0.1),
             transforms.ToTensor(),  # Chuyển ảnh thành tensor
-            transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])  # Chuẩn hóa dữ liệu
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])  # Chuẩn hóa dữ liệu
         ]
     )

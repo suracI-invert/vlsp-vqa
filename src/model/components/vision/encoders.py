@@ -17,30 +17,36 @@ from transformers import (
     logging
 )
 
+class ImageProcessorViT:
+    def __init__(self, pretrained_model_name_or_path=None):
+        if pretrained_model_name_or_path is None:
+            # Use a default pre-trained Vision Transformer model
+            pretrained_model_name_or_path = "microsoft/beit-base-patch16-224"  # Change to the desired ViT model
+
+        self.preprocessor = AutoFeatureExtractor.from_pretrained(pretrained_model_name_or_path)
+
+    def preprocess_images(self, images):
+        processed_images = self.preprocessor(
+            images=images,
+            return_tensors="pt",
+        )
+        return {
+            "pixel_values": processed_images['pixel_values'],
+        }
+    
 class ImageEncoderViT(nn.Module):
     def __init__(self, pretrained_image_name: str = "microsoft/beit-base-patch16-224"):
         super(ImageEncoderViT, self).__init__()
         self.image_encoder = AutoModel.from_pretrained(pretrained_image_name)
-        # self.preprocessor = AutoFeatureExtractor.from_pretrained(pretrained_image_name)
-
-    #TODO: Cuda is not working -> preprocessor device mismatch (cpu) while image is in cuda
-    # def preprocess_images(self, images):
-    #     processed_images = self.preprocessor(
-    #         images=images,
-    #         return_tensors="pt",
-    #     )
-    #     return {
-    #         "pixel_values": processed_images['pixel_values'],
-    #     }
+        #self.preprocessor = AutoFeatureExtractor.from_pretrained(pretrained_image_name)
     
-    def forward(self, images):
+    def forward(self, pixel_values):
         """
         - input: image
         - output shape: (batch_size, sequence_length, hidden_size) [1, sequence_length, 768]
         """
-        # processed_image = self.preprocess_images(images)
-        encoded_image = self.image_encoder(pixel_values= images, return_dict = True)
-        # encoded_image = self.image_encoder(pixel_values=processed_image['pixel_values'], return_dict = True)
+        processed_image = self.preprocess_images(images)
+        encoded_image = self.image_encoder(pixel_values=processed_image['pixel_values'], return_dict = True)
         return encoded_image['last_hidden_state']
     
     def freeze(self):
@@ -58,12 +64,14 @@ class EfficientNetEncoder(nn.Module):
     def forward(self, images):
         """
         - input: image
-        - output shape: (batch_size, feature_map_size, hidden_size) [1, 1200, 1280]
+        - output shape: (batch_size, feature_map_size, hidden_size) [1, feature_map_size, 1280]
         """
+        images = torch.stack(images)
         batch_size, c, h, w = images.shape
-        
+
         x_resized_1 = images.view(batch_size , c, h, w)
         fmap = self.model(x_resized_1)
+        
         batch_size, dim, h, w = fmap.shape
         fmap = fmap.view(batch_size, h * w, dim)
         #print(fmap.shape)

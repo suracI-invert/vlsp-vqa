@@ -197,6 +197,10 @@ class Block(nn.Module):
                 x_text = x_text + self.drop_path(self.gamma_2 * self.fnn_text(self.norm2_text(x_text)))
                 x_img = x_img + self.drop_path(self.gamma_2 * self.fnn_img(self.norm2_img(x_img)))
                 x = torch.cat([x_text, x_img], dim=1)
+                # print(x_text.shape)
+                # print(x_img.shape)
+                # print('*' * 50)
+                # print(x.shape)
             else:
                 x = x + self.drop_path(self.gamma_2 * self.fnn_vl(self.norm2_vl(x)))
 

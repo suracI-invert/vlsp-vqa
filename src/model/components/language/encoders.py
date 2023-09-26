@@ -63,4 +63,8 @@ class BARTphoEncoder(Module):
         if self.hidden_dim != outputs.shape - 1:
             outputs = nn.Linear(outputs.shape - 1, self.hidden_dim)
       
-        return outputs.last_hidden_state
+        return outputs.encoder_last_hidden_state
+    
+    def freeze(self):
+        for param in self.model.parameters():
+            param.requires_grad = False

@@ -1,8 +1,10 @@
-from src.model.lit import VQALitModule
-from src.model.model import VLMo
-
+from src.model.lit import VQALitModule, BaselineLitModule
+from src.model.model import VLMo, Baseline
+from src.model.components.vision.encoders import ImageProcessorViT
 from src.dataset.datamodule import VQADataModule
 from src.dataset.components.DataAugmentation import ImageAugmentation
+
+from transformers import AutoTokenizer
 
 import torch
 from torch import set_float32_matmul_precision, rand
@@ -13,6 +15,8 @@ from lightning import Trainer
 
 if __name__ == '__main__':
     # set_float32_matmul_precision('medium')
+    MAX_LEN = 256
+    LABEL_SPACE = 27896
 
     scheduler_params = {
         'mode': 'min',
@@ -32,19 +36,46 @@ if __name__ == '__main__':
         'vlsp2023_train_data.json', 
         'dev-images', 
         'vlsp2023_dev_data.json', 
-        transforms= transforms.Compose([transforms.Resize((224, 224)), transforms.ToTensor()]), 
+        transforms= ImageAugmentation(), 
         batch_size= 16,
-        train_val_split= (28000, 2833)
+        max_length= MAX_LEN,
+        # train_val_split= (28000, 2833),
+        tokenizer= AutoTokenizer.from_pretrained('vinai/phobert-base'),
+        processor= ImageProcessorViT()
     )
     dm.setup()
-    net = VLMo()
+    net = Baseline(LABEL_SPACE)
 
-    model = VQALitModule(
+    model = BaselineLitModule(
         net, torch.optim.AdamW, torch.optim.lr_scheduler.ReduceLROnPlateau,
-        learning_rate= 0.01,
+        learning_rate= 0.001,
         scheduler_params= scheduler_params,
         interval= 'epoch',
+        mapfile= dm.labels2id
     )
+    # dm = VQADataModule(
+    #     './data', 
+    #     'training-images', 
+    #     'vlsp2023_train_data.json', 
+    #     'dev-images', 
+    #     'vlsp2023_dev_data.json', 
+    #     transforms= ImageAugmentation(), 
+    #     batch_size= 16,
+    #     max_length= MAX_LEN,
+    #     # train_val_split= (28000, 2833),
+    #     tokenizer= AutoTokenizer.from_pretrained('VietAI/vit5-base'),
+    #     processor= ImageProcessorViT()
+    # )
+    # dm.setup()
+    # net = VLMo(LABEL_SPACE, MAX_LEN)
+
+    # model = VQALitModule(
+    #     net, torch.optim.AdamW, torch.optim.lr_scheduler.ReduceLROnPlateau,
+    #     learning_rate= 0.01,
+    #     scheduler_params= scheduler_params,
+    #     interval= 'epoch',
+    #     mapfile= dm.labels2id
+    # )
 
     tb_logger = loggers.TensorBoardLogger(
         save_dir= './log',

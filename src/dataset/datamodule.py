@@ -7,6 +7,7 @@ from torch import Generator
 from src.dataset.components.datasets import VQADataset
 import gdown
 import os
+import json
 
 import zipfile
 
@@ -18,6 +19,8 @@ class VQADataModule(LightningDataModule):
                 test_map_file: str = None,
                 train_val_split: Tuple[int, int] = None,
                 tokenizer = None,
+                processor= None,
+                max_length: int = 512,
                 batch_size: int = 1,
                 num_workers: int = 0,
                 pin_memory: bool = False,
@@ -58,21 +61,28 @@ class VQADataModule(LightningDataModule):
         os.remove(os.path.join(output, 'data/dev-images.zip'))
 
     def setup(self, stage: Optional[str] = None) -> None:
+
         if not self.setup_called:
+            with open(os.path.join(self.hparams.root_dir, 'labels.json'), 'r', encoding= 'utf8') as f:
+                self.labels2id = json.load(f)
             self.setup_called = True
             dataset = VQADataset(self.hparams.root_dir, map_file= self.hparams.map_file, data_dir= self.hparams.data_dir,
-                                tokenizer= self.hparams.tokenizer, transforms= self.hparams.transforms
+                                labels2id= self.labels2id, tokenizer= self.hparams.tokenizer, processor= self.hparams.processor, 
+                                transforms= self.hparams.transforms, max_length= self.hparams.max_length
                                 )
             if not self.hparams.train_val_split:
                 self.data_train = dataset
-            else:
-                self.data_train, self.data_valid = random_split(
-                    dataset= dataset,
-                    lengths= self.hparams.train_val_split,
-                    generator= Generator().manual_seed(42)
-                )
-            if self.hparams.test_dir and not self.data_test:
-                self.data_test = VQADataset(self.hparams.root_dir, self.hparams.test_map_file, self.hparams.test_dir, tokenizer= self.hparams.tokenizer, transforms= self.hparams.transforms)
+                self.data_valid = VQADataset(self.hparams.root_dir, self.hparams.test_map_file, self.hparams.test_dir, 
+                                             labels2id= self.labels2id, tokenizer= self.hparams.tokenizer, processor= self.hparams.processor, 
+                                             transforms= self.hparams.transforms, max_length= self.hparams.max_length)
+            # else:
+            #     self.data_train, self.data_valid = random_split(
+            #         dataset= dataset,
+            #         lengths= self.hparams.train_val_split,
+            #         generator= Generator().manual_seed(42)
+            #     )
+            # if self.hparams.test_dir and not self.data_test:
+            #     self.data_test = VQADataset(self.hparams.root_dir, self.hparams.test_map_file, self.hparams.test_dir, tokenizer= self.hparams.tokenizer, processor= self.hparams.processor, transforms= self.hparams.transforms, max_length= self.hparams.max_length)
 
     def train_dataloader(self) -> DataLoader:
         return DataLoader(

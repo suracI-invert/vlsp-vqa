@@ -45,8 +45,8 @@ class ImageEncoderViT(nn.Module):
         - input: image
         - output shape: (batch_size, sequence_length, hidden_size) [1, sequence_length, 768]
         """
-        processed_image = self.preprocess_images(images)
-        encoded_image = self.image_encoder(pixel_values=processed_image['pixel_values'], return_dict = True)
+        # processed_image = self.preprocess_images(images)
+        encoded_image = self.image_encoder(pixel_values, return_dict = True)
         return encoded_image['last_hidden_state']
     
     def freeze(self):

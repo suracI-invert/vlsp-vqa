@@ -12,7 +12,7 @@ class VLMo(nn.Module):
         super().__init__()
 
         self.image_encoder = ImageEncoderViT()
-        self.text_encoder = ViT5Encoder()
+        self.text_encoder = BARTphoEncoder()
         if freeze:
             self.image_encoder.freeze()
             self.text_encoder.freeze()

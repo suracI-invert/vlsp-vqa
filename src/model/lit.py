@@ -6,8 +6,10 @@ from lightning import LightningModule
 from torchmetrics.text.bleu import BLEUScore
 from torchmetrics.classification.accuracy import MulticlassAccuracy
 from torchmetrics import MaxMetric, MeanMetric
+from src.utils.metrics import MeanBLEU
 
 from src.model.model import VLMo
+from src.utils.translate import translate
 
 class VQALitModule(LightningModule):
     """
@@ -15,12 +17,12 @@ class VQALitModule(LightningModule):
     """
     def __init__(self,
                 net: nn.Module,
-                # tokenizer,
+                tokenizer,
                 optimizer: optim.Optimizer,
                 lr_scheduler: optim.lr_scheduler,
-                mapfile= None,
                 optimizer_params: Dict[str, Any] = {},
                 scheduler_params: Dict[str, Any] = {},
+                max_len: int = 64,
                 learning_rate: float = 0.001,
                 monitor_metric: str = 'val/loss',
                 interval: str = 'epoch',
@@ -30,60 +32,51 @@ class VQALitModule(LightningModule):
         wow
         """
         super().__init__()
-        self.save_hyperparameters(logger= False, ignore= ['net'])
+        self.save_hyperparameters(logger= False, ignore= ['net', 'tokenizer'])
 
         self.net = net
-        self.criterion = nn.CrossEntropyLoss()
-
-        self.acc = MulticlassAccuracy(27896, average= 'micro')
+        self.tokenizer = tokenizer
     
-        self.val_bleu_1 = BLEUScore(1)
-        self.val_bleu_2 = BLEUScore(2)
-        self.val_bleu_3 = BLEUScore(3)
-        self.val_bleu_4 = BLEUScore(4)
+        self.val_bleu_1 = BLEUScore(1, True)
+        self.val_bleu_2 = BLEUScore(2, True)
+        self.val_bleu_3 = BLEUScore(3, True)
+        self.val_bleu_4 = BLEUScore(4, True)
+        self.val_bleu_avg = MeanBLEU()
 
         self.train_loss = MeanMetric()
         self.val_loss = MeanMetric()
 
-        self.acc_best = MaxMetric()
-
+        self.val_bleu_avg_best = MaxMetric()
         self.val_bleu_1_best = MaxMetric()
         self.val_bleu_2_best = MaxMetric()
         self.val_bleu_3_best = MaxMetric()
         self.val_bleu_4_best = MaxMetric()
 
-    def forward(self, img, text):
-        return self.net(img, text) 
+    def forward(self, text, img, tgt):
+        return self.net(text, img, tgt) 
 
     def model_step(self, batch):
         """Perform a single model step on a batch of data.
 
-        :param batch: A batch of data (a tuple) containing the input tensor of images and target labels.
+        :param batch: A batch of data (a tuple) containing the input tensor of tokenized_question, img, tokenized_answer.
 
         :return: A tuple containing (in order):
-            - A tensor of losses.
-            - A tensor of predictions.
-            - A tensor of target labels.
+            - Loss.
+            - Logits.
         """
         img = batch['img']
         text = batch['tokenized_question']
-        label = batch['label'].cuda()
-        logits = self.forward(img, text)
+        tgt = batch['tokenized_answer']
+        output = self.forward(text, img, tgt)
 
-        # hacky bit: turn all Long tensor to Float tensor, might need to revisit this again
-        loss = self.criterion(
-             logits,
-             label,
-            )
         # loss.requires_grad = True #??? why does loss lost grad
-        return loss, logits
+        return output['loss'], output['logits']
 
 
     def training_step(self, batch, batch_idx):
         """Perform a single training step on a batch of data from the training set.
 
-        :param batch: A batch of data (a tuple) containing the input tensor of images and target
-            labels.
+        :param batch: A batch of data (a tuple) containing the input tensor of tokenized_question, img, tokenized_answer.
         :param batch_idx: The index of the current batch.
         :return: A tensor of losses between model predictions and targets.
         """
@@ -99,33 +92,37 @@ class VQALitModule(LightningModule):
     def validation_step(self, batch, batch_idx):
         """Perform a single test step on a batch of data from the test set.
 
-        :param batch: A batch of data (a tuple) containing the input tensor of images and target
-            labels.
+        :param batch: A batch of data (a tuple) containing the input tensor of tokenized_question, img, tokenized_answer.
         :param batch_idx: The index of the current batch.
         """
         loss, logits = self.model_step(batch)
         # preds = self.net.text_encoder.tokenizer.batch_decode(torch.argmax(logits, -1))
-        preds = torch.argmax(torch.nn.functional.softmax(logits, dim= -1), dim= -1).cpu().detach()
-        labels = batch['label'].cpu().detach()
         targets = batch['answer']
 
         # update and log metrics
         self.val_loss(loss)
         self.log("val/loss", self.val_loss, on_step=True, on_epoch=True, prog_bar=True)
 
-        self.acc(preds, labels)
-        self.log('val/acc', self.acc, on_step= False, on_epoch= True, prog_bar= True)
+        preds_text_id = translate(
+            self.net, batch['img'], 
+            batch['tokenized_question'], 
+            self.tokenizer.pad_token_id, # ViT5 no bos_token, cant add due to embedding size limit TODO: stop this hack
+            self.tokenizer.eos_token_id,
+            self.tokenizer.pad_token_id,
+            self.hparams.max_len,
+        )
 
-        if self.hparams.mapfile:
-            preds_text = [[k for k, v in self.hparams.mapfile.items() if v == i][0] for i in preds]
-            self.val_bleu_1(preds_text, targets)
-            self.val_bleu_2(preds_text, targets)
-            self.val_bleu_3(preds_text, targets)
-            self.val_bleu_4(preds_text, targets)
-            self.log("val/bleu_1", self.val_bleu_1, on_step=False, on_epoch=True, prog_bar=True)
-            self.log("val/bleu_2", self.val_bleu_2, on_step=False, on_epoch=True, prog_bar=True)
-            self.log("val/bleu_3", self.val_bleu_3, on_step=False, on_epoch=True, prog_bar=True)
-            self.log("val/bleu_4", self.val_bleu_4, on_step=False, on_epoch=True, prog_bar=True)
+        preds_text = self.tokenizer.batch_decode(preds_text_id)
+        
+        self.val_bleu_1(preds_text, targets)
+        self.val_bleu_2(preds_text, targets)
+        self.val_bleu_3(preds_text, targets)
+        self.val_bleu_4(preds_text, targets)
+
+        self.log("val/bleu_1", self.val_bleu_1, on_step=False, on_epoch=True, prog_bar=True)
+        self.log("val/bleu_2", self.val_bleu_2, on_step=False, on_epoch=True, prog_bar=True)
+        self.log("val/bleu_3", self.val_bleu_3, on_step=False, on_epoch=True, prog_bar=True)
+        self.log("val/bleu_4", self.val_bleu_4, on_step=False, on_epoch=True, prog_bar=True)
 
 
     def on_validation_epoch_end(self) -> None:
@@ -135,22 +132,25 @@ class VQALitModule(LightningModule):
             bleu_3 = self.val_bleu_3.compute() 
             bleu_4 = self.val_bleu_4.compute() 
 
-            acc = self.acc.compute()
+            self.val_bleu_avg((bleu_1, bleu_2, bleu_3, bleu_4))
+
+            mean_bleu = self.val_bleu_avg.compute()
+
+            self.val_bleu_avg_best(mean_bleu)
 
             self.val_bleu_1_best(bleu_1)  # update best so far val bleu
             self.val_bleu_2_best(bleu_2)
             self.val_bleu_3_best(bleu_3)
             self.val_bleu_4_best(bleu_4)
 
-            self.acc_best(acc)
-            self.log('val/acc_best', self.acc_best.compute(), sync_dist= True, prog_bar= True)
-
             # log `val_bleu_x_best` as a value through `.compute()` method, instead of as a metric object
             # otherwise metric would be reset by lightning after each epoch
+            self.log("val/bleu_mean", mean_bleu, sync_dist=True, prog_bar=True)
             self.log("val/bleu_1_best", self.val_bleu_1_best.compute(), sync_dist=True, prog_bar=True)
             self.log("val/bleu_2_best", self.val_bleu_2_best.compute(), sync_dist=True, prog_bar=True)
             self.log("val/bleu_3_best", self.val_bleu_3_best.compute(), sync_dist=True, prog_bar=True)
             self.log("val/bleu_4_best", self.val_bleu_4_best.compute(), sync_dist=True, prog_bar=True)
+            self.log("val/bleu_mean_best", self.val_bleu_avg_best.compute(), sync_dist=True, prog_bar=True)
         
     def configure_optimizers(self):
         optimizer = self.hparams.optimizer(params= self.parameters(), lr= self.hparams.learning_rate, **self.hparams.optimizer_params)

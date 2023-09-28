@@ -1,12 +1,15 @@
-from torch import nn, concat, no_grad, tensor, rand
+from torch import nn, cat, no_grad, tensor, rand
 from src.model.components.vision.encoders import EfficientNetEncoder, ImageEncoderViT
 from src.model.components.language.encoders import ViT5Encoder, BARTphoEncoder
 from src.model.components.transformer import MultiwayTransformer
 from src.model.components.pooler import Pooler
-from src.model.components.attentions import GuidedAttention, TransformerDecoderLayer
+from src.model.components.attentions import GuidedAttention, TransformerDecoderLayer, PositionalEncoding
+
+from src.utils.loss import LabelSmoothingLoss
 
 from transformers import AutoModel
 
+import math
 
 class VLMo(nn.Module):
     def __init__(self, vocab_size, max_text_len, freeze= True):
@@ -27,7 +30,7 @@ class VLMo(nn.Module):
         img_feature = self.image_encoder(img)
         text_feature = self.text_encoder(text)
 
-        x = concat([text_feature, img_feature], dim= 1)
+        x = cat([text_feature, img_feature], dim= 1)
         # print(text_feature.shape)
         # print(img_feature.shape)
         # print(x.shape)
@@ -81,7 +84,7 @@ class Baseline(nn.Module):
         text = self.text_encoder(input_ids= input_ids, attention_mask= attention_mask, token_type_ids= token_type_ids, return_dict= True)
         img = self.img_encoder(pixel_values= pixel_values, return_dict= True)
 
-        fused = self.fusion(concat([text['pooler_output'], img['pooler_output']], dim= 1))
+        fused = self.fusion(cat([text['pooler_output'], img['pooler_output']], dim= 1))
         logits = self.classifier(fused).cuda()
         # print(logits.device)
 
@@ -94,11 +97,19 @@ class Baseline(nn.Module):
     
 
 class GA(nn.Module):
-    def __init__(self, vocab_size, d_model, nheads_encoder, nheads_decoder, num_encoder_layers, num_decoder_layers, hidden_dim, dropout_encoder= 0.2, freeze= True):
+    def __init__(self, vocab_size, pad_id, 
+                 d_model= 768, nheads_encoder= 8, 
+                 nheads_decoder= 8, num_encoder_layers= 6, 
+                 num_decoder_layers= 6, hidden_dim= 2048, 
+                 dropout_encoder= 0.2, freeze= True, return_loss= True
+                ):
         super().__init__()
 
         self.image_encoder = ImageEncoderViT()
         self.text_encoder = ViT5Encoder()
+
+        self.return_loss = return_loss
+
         if freeze:
             self.image_encoder.freeze()
             self.text_encoder.freeze()
@@ -110,7 +121,17 @@ class GA(nn.Module):
             hidden_dim= hidden_dim
         ) for _ in range(num_encoder_layers)])
 
+        self.encoder_fnn = nn.Sequential(
+            nn.Linear(d_model, hidden_dim),
+            nn.Dropout(dropout_encoder),
+            nn.Linear(hidden_dim, d_model),
+        )
+
+        self.encoder_fnn_drop = nn.Dropout(dropout_encoder)
+        self.encoder_fnn_norm = nn.LayerNorm(d_model)
+
         self.decoder = TransformerDecoderLayer(
+            vocab_size= vocab_size,
             d_model= d_model,
             nhead=nheads_decoder, 
             dim_feedforward=hidden_dim,  
@@ -118,21 +139,48 @@ class GA(nn.Module):
         )
 
         self.classifier = nn.Linear(d_model, vocab_size)
+        self.criterion = LabelSmoothingLoss(vocab_size, 1, 0.1)
         
 
-    def forward(self, img, text):
-        img_feature = self.image_encoder(img)
+    def forward(self, text, img, tgt):
+        label_ids = tgt['input_ids']
         text_feature = self.text_encoder(text)
+        img_feature = self.image_encoder(img)
 
         # Swap dim 0, dim 1. From (batch_size, seq_length, hidden_dim) to (seq_length, batch_size, hidden_dim)
         img_feature = img_feature.permute(1, 0, 2) 
         text_feature = text_feature.permute(1, 0, 2)
         
         # x.shape = (batch_size, seq_length, hidden_dim)
-        x = self.encoder_layers(img_feature, text_feature)
+        img_feature, text_feature = self.encoder_layers((img_feature, text_feature))
 
-        decoder_output = self.decoder(x)
+        src = cat([img_feature, text_feature], dim= 0)
 
-        print(decoder_output.shape)
+        src = self.encoder_fnn_norm(self.encoder_fnn_drop(src + self.encoder_fnn(src)))
 
-        return self.classifier(decoder_output)
+        decoder_output = self.decoder(src, tgt['input_ids'], tgt['attention_mask'])
+        decoder_output = self.classifier(decoder_output)
+
+        if self.return_loss:
+            return {
+                'loss': self.criterion(decoder_output.view(-1, decoder_output.size(2)), label_ids.view(-1)),
+                'logits': decoder_output
+            }
+        return {
+            'logits': decoder_output
+        }
+    
+    def encoder_forward(self, text, img):
+        text_feature = self.text_encoder(text)
+        img_feature = self.image_encoder(img)
+        img_feature = img_feature.permute(1, 0, 2) 
+        text_feature = text_feature.permute(1, 0, 2)
+        img_feature, text_feature = self.encoder_layers((img_feature, text_feature))
+        src = cat([img_feature, text_feature], dim= 0)
+        src = self.encoder_fnn_norm(self.encoder_fnn_drop(src + self.encoder_fnn(src)))
+
+        return src
+
+    def decoder_forward(self, src, tgt):
+        output = self.classifier(self.decoder(src, tgt))
+        return output

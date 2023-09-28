@@ -211,7 +211,7 @@ class TransformerDecoderLayer(nn.Module):
     def __init__(self,
             d_model,
             nhead,
-            dim_feedfoward,
+            dim_feedforward,
             num_layers
         ):
         super().__init__()
@@ -219,8 +219,8 @@ class TransformerDecoderLayer(nn.Module):
         self.decoder_layer = nn.TransformerDecoderLayer(
             d_model = d_model,
             nhead = nhead,
-            dim_feedfoward = dim_feedfoward
-        )
+            dim_feedforward = dim_feedforward
+        ) 
 
         self.transformer_decoder = nn.TransformerDecoder(
             decoder_layer = self.decoder_layer,
@@ -228,21 +228,36 @@ class TransformerDecoderLayer(nn.Module):
         )
 
     def forward(self, src, tgt):
-        return self.transformer_decoder(src, tgt)
+        tgt_seq_len = tgt.shape[0]
+        subsequent_mask = self.gen_mask(tgt_seq_len)
+    
+        output = self.transformer_decoder(src, tgt, tgt_mask=subsequent_mask)
+        
+        return output
+    
+    def gen_mask(self, tgt_len):
+        subsequent_mask = torch.triu(torch.ones(tgt_len, tgt_len) == 1).transpose(0, 1)
+        subsequent_mask = subsequent_mask.float().masked_fill(subsequent_mask == 0, float('-inf')).masked_fill(subsequent_mask == 1, float(0.0))
+        return subsequent_mask
 
-
+        
+        
 class GuidedAttention(nn.Module):
     def __init__(self, dim, nheads, dropout, hidden_dim):
         super().__init__()
         self.text_attn = nn.MultiheadAttention(dim, nheads, dropout)
-        self.img_attn = nn.MultiheadAttention(dim, nheads, dropout)
+        self.img_attn = nn.MultiheadAttention(dim, nheads, dropout) 
+        
         self.text_drop = nn.Dropout(dropout)
         self.img_drop = nn.Dropout(dropout)
+
         self.text_norm = nn.LayerNorm(dim)
         self.img_norm = nn.LayerNorm(dim)
+
         self.ga = nn.MultiheadAttention(dim, nheads, dropout)
         self.ga_drop = nn.Dropout(dropout)
         self.ga_norm = nn.LayerNorm(dim)
+
         self.img_ffn = nn.Sequential(
             nn.Linear(dim, hidden_dim),
             nn.Dropout(dropout),
@@ -250,6 +265,7 @@ class GuidedAttention(nn.Module):
         )
         self.img_ffn_drop = nn.Dropout(dropout)
         self.img_ffn_norm = nn.LayerNorm(dim)
+
         self.text_ffn = nn.Sequential(
             nn.Linear(dim, hidden_dim),
             nn.Dropout(dropout),
@@ -258,16 +274,16 @@ class GuidedAttention(nn.Module):
         self.text_ffn_drop = nn.Dropout(dropout)
         self.text_ffn_norm = nn.LayerNorm(dim)
 
-        self.fcn = nn.Layer(dim, dim)
-    
+        self.fcn = nn.Linear(dim, dim) 
+
     def forward(self, img, text):
         text = self.text_norm(self.text_drop(text + self.text_attn(text, text, text)[0]))
         img = self.img_norm(self.img_drop(img + self.img_attn(img, img, img)[0]))
 
-        ga = self.ga_norm(self.ga_drop(text + self.ga(text, img, img)[0]))
+        ga = self.ga_norm(self.ga_drop(img + self.ga(img, text, text)[0]))
 
-        text = self.text_ffn_norm(self.text_ffn_drop(ga + self.text_ffn(ga)))
-        img = self.img_ffn_norm(self.img_ffn_drop(img + self.img_ffn(img)))
+        text = self.text_ffn_norm(self.text_ffn_drop(text + self.text_ffn(text)))
+        img = self.img_ffn_norm(self.img_ffn_drop(ga + self.img_ffn(ga)))
 
         out = torch.cat([img, text], dim= 1)
-        return self.fcn(out)    
+        return self.fcn(out)    # nhg ma minh van deo hieu test kieu gi :D 

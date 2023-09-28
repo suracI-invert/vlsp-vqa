@@ -1,8 +1,9 @@
-from torch import nn, concat, no_grad, tensor
+from torch import nn, concat, no_grad, tensor, rand
 from src.model.components.vision.encoders import EfficientNetEncoder, ImageEncoderViT
-from src.model.components.language.encoders import BARTphoEncoder, ViT5Encoder
+from src.model.components.language.encoders import ViT5Encoder, BARTphoEncoder
 from src.model.components.transformer import MultiwayTransformer
 from src.model.components.pooler import Pooler
+from src.model.components.attentions import GuidedAttention, TransformerDecoderLayer
 
 from transformers import AutoModel
 
@@ -90,3 +91,48 @@ class Baseline(nn.Module):
             out['loss'] = loss
         
         return out
+    
+
+class GA(nn.Module):
+    def __init__(self, vocab_size, d_model, nheads_encoder, nheads_decoder, num_encoder_layers, num_decoder_layers, hidden_dim, dropout_encoder= 0.2, freeze= True):
+        super().__init__()
+
+        self.image_encoder = ImageEncoderViT()
+        self.text_encoder = ViT5Encoder()
+        if freeze:
+            self.image_encoder.freeze()
+            self.text_encoder.freeze()
+
+        self.encoder_layers = nn.Sequential(*[GuidedAttention(
+            dim= d_model,
+            nheads=nheads_encoder,  
+            dropout=dropout_encoder,  
+            hidden_dim= hidden_dim
+        ) for _ in range(num_encoder_layers)])
+
+        self.decoder = TransformerDecoderLayer(
+            d_model= d_model,
+            nhead=nheads_decoder, 
+            dim_feedforward=hidden_dim,  
+            num_layers= num_decoder_layers 
+        )
+
+        self.classifier = nn.Linear(d_model, vocab_size)
+        
+
+    def forward(self, img, text):
+        img_feature = self.image_encoder(img)
+        text_feature = self.text_encoder(text)
+
+        # Swap dim 0, dim 1. From (batch_size, seq_length, hidden_dim) to (seq_length, batch_size, hidden_dim)
+        img_feature = img_feature.permute(1, 0, 2) 
+        text_feature = text_feature.permute(1, 0, 2)
+        
+        # x.shape = (batch_size, seq_length, hidden_dim)
+        x = self.encoder_layers(img_feature, text_feature)
+
+        decoder_output = self.decoder(x)
+
+        print(decoder_output.shape)
+
+        return self.classifier(decoder_output)

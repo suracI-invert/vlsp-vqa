@@ -22,4 +22,3 @@ class BLEU_CIDEr(Metric):
     def compute(self):
         score = compute_scores(self.labels, self.preds)
         return (score['BLEU'], score['CIDEr'])
-

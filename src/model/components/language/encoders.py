@@ -62,6 +62,7 @@ class BARTphoEncoder(Module):
         # # Remove token_type_ids from the input dictionary [ONLY IF USE BARTPHO-WORD], tại trong MBart k có token_type_ids 
         # input.pop('token_type_ids', None)
 
+        # ------------------------------------------------------------------------------------
         # TODO: fix this shit -> output no shape attribute (Seq2SeqModelOutput type) -> done?
         # outputs = self.model(**input)
 
@@ -77,6 +78,7 @@ class BARTphoEncoder(Module):
         #     outputs = nn.Linear(hidden_size, self.hidden_dim)
   
         # return outputs_encoder_lhs
+        # ------------------------------------------------------------------------------------
 
         # Return 4 layers of encoder concatinated for better performance
         # See: https://www.kaggle.com/code/rhtsingh/utilizing-transformer-representations-efficiently

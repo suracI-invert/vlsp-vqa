@@ -4,7 +4,6 @@ import torch
 from torch import nn, optim
 from lightning import LightningModule
 from torchmetrics.text.bleu import BLEUScore
-from torchmetrics.classification.accuracy import MulticlassAccuracy
 from torchmetrics import MaxMetric, MeanMetric
 from src.utils.metrics import MeanBLEU
 

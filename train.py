@@ -42,7 +42,7 @@ if __name__ == '__main__':
     ckpt_cb = ModelCheckpoint(
         dirpath= './weights',
         filename= 'vqa_{epoch:02d}_{val_bleu:0.2f}',
-        monitor= 'val/bleu_mean',
+        monitor= 'val/bleu_4',
         save_on_train_epoch_end= True,
         save_top_k= 1,
     )
@@ -62,7 +62,7 @@ if __name__ == '__main__':
         processor= ImageProcessorViT()
     )
     dm.setup()
-    net = GA(tokenizer.vocab_size, tokenizer.pad_token_id, num_encoder_layers= 12)
+    net = GA(tokenizer.vocab_size, tokenizer.pad_token_id, num_encoder_layers= 6, freeze= True)
 
     model = VQALitModule(
         net, tokenizer, torch.optim.AdamW, torch.optim.lr_scheduler.ReduceLROnPlateau,
@@ -85,7 +85,7 @@ if __name__ == '__main__':
         log_every_n_steps= 5,
         num_sanity_val_steps= 2,
         check_val_every_n_epoch= 1,
-        callbacks= [es_cb, lr_monitor, ckpt_cb],
+        callbacks= [lr_monitor, ckpt_cb],
         profiler= profiler
     )
 

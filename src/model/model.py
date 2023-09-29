@@ -121,14 +121,16 @@ class GA(nn.Module):
             hidden_dim= hidden_dim
         ) for _ in range(num_encoder_layers)])
 
-        self.encoder_fnn = nn.Sequential(
-            nn.Linear(d_model, hidden_dim),
-            nn.Dropout(dropout_encoder),
-            nn.Linear(hidden_dim, d_model),
-        )
+        # self.encoder_fnn = nn.Sequential(
+        #     nn.Linear(d_model, hidden_dim),
+        #     nn.Dropout(dropout_encoder),
+        #     nn.Linear(hidden_dim, d_model),
+        # )
 
         self.encoder_fnn_drop = nn.Dropout(dropout_encoder)
-        self.encoder_fnn_norm = nn.LayerNorm(d_model)
+        # self.encoder_fnn_norm = nn.LayerNorm(d_model)
+
+        self.encoder_fnn = nn.Linear(d_model, d_model)
 
         self.decoder = TransformerDecoderLayer(
             vocab_size= vocab_size,
@@ -156,7 +158,8 @@ class GA(nn.Module):
 
         src = cat([img_feature, text_feature], dim= 0)
 
-        src = self.encoder_fnn_norm(self.encoder_fnn_drop(src + self.encoder_fnn(src)))
+        # src = self.encoder_fnn_norm(self.encoder_fnn_drop(src + self.encoder_fnn(src)))
+        src = self.encoder_fnn(self.encoder_fnn_drop(src))
 
         decoder_output = self.decoder(src, tgt['input_ids'], tgt['attention_mask'])
         decoder_output = self.classifier(decoder_output)
@@ -177,7 +180,8 @@ class GA(nn.Module):
         text_feature = text_feature.permute(1, 0, 2)
         img_feature, text_feature = self.encoder_layers((img_feature, text_feature))
         src = cat([img_feature, text_feature], dim= 0)
-        src = self.encoder_fnn_norm(self.encoder_fnn_drop(src + self.encoder_fnn(src)))
+        # src = self.encoder_fnn_norm(self.encoder_fnn_drop(src + self.encoder_fnn(src)))
+        src = self.encoder_fnn(self.encoder_fnn_drop(src))
 
         return src
 

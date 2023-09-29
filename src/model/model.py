@@ -101,12 +101,13 @@ class GA(nn.Module):
                  d_model= 768, nheads_encoder= 8, 
                  nheads_decoder= 8, num_encoder_layers= 6, 
                  num_decoder_layers= 6, hidden_dim= 2048, 
-                 dropout_encoder= 0.2, freeze= True, return_loss= True
+                 dropout_encoder= 0.2, act= nn.ReLU, freeze= True, return_loss= True
                 ):
         super().__init__()
 
         self.image_encoder = ImageEncoderViT()
-        self.text_encoder = ViT5Encoder()
+        # self.text_encoder = ViT5Encoder() # TODO: logic to change between diffenrent encoder
+        self.text_encoder = BARTphoEncoder()
 
         self.return_loss = return_loss
 
@@ -118,7 +119,8 @@ class GA(nn.Module):
             dim= d_model,
             nheads=nheads_encoder,  
             dropout=dropout_encoder,  
-            hidden_dim= hidden_dim
+            hidden_dim= hidden_dim,
+            act= act
         ) for _ in range(num_encoder_layers)])
 
         # self.encoder_fnn = nn.Sequential(
@@ -128,7 +130,7 @@ class GA(nn.Module):
         # )
 
         self.encoder_fnn_drop = nn.Dropout(dropout_encoder)
-        # self.encoder_fnn_norm = nn.LayerNorm(d_model)
+        self.encoder_fnn_norm = nn.LayerNorm(d_model)
 
         self.encoder_fnn = nn.Linear(d_model, d_model)
 
@@ -146,23 +148,27 @@ class GA(nn.Module):
 
     def forward(self, text, img, tgt):
         label_ids = tgt['input_ids']
-        text_feature = self.text_encoder(text)
-        img_feature = self.image_encoder(img)
+        # text_feature = self.text_encoder(text)
+        # img_feature = self.image_encoder(img)
 
-        # Swap dim 0, dim 1. From (batch_size, seq_length, hidden_dim) to (seq_length, batch_size, hidden_dim)
-        img_feature = img_feature.permute(1, 0, 2) 
-        text_feature = text_feature.permute(1, 0, 2)
+        # # Swap dim 0, dim 1. From (batch_size, seq_length, hidden_dim) to (seq_length, batch_size, hidden_dim)
+        # img_feature = img_feature.permute(1, 0, 2) 
+        # text_feature = text_feature.permute(1, 0, 2)
         
-        # x.shape = (batch_size, seq_length, hidden_dim)
-        img_feature, text_feature = self.encoder_layers((img_feature, text_feature))
+        # # x.shape = (batch_size, seq_length, hidden_dim)
+        # img_feature, text_feature = self.encoder_layers((img_feature, text_feature))
 
-        src = cat([img_feature, text_feature], dim= 0)
+        # src = cat([img_feature, text_feature], dim= 0)
 
-        # src = self.encoder_fnn_norm(self.encoder_fnn_drop(src + self.encoder_fnn(src)))
-        src = self.encoder_fnn(self.encoder_fnn_drop(src))
+        # # src = self.encoder_fnn_norm(self.encoder_fnn_drop(src + self.encoder_fnn(src)))
+        # src = self.encoder_fnn(self.encoder_fnn_drop(src))
 
-        decoder_output = self.decoder(src, tgt['input_ids'], tgt['attention_mask'])
-        decoder_output = self.classifier(decoder_output)
+        src = self.encoder_forward(text, img)
+
+        # decoder_output = self.decoder(src, tgt['input_ids'], tgt['attention_mask'])
+        # decoder_output = self.classifier(decoder_output)
+
+        decoder_output = self.decoder_forward(src, tgt['input_ids'], tgt['attention_mask'])
 
         if self.return_loss:
             return {
@@ -181,10 +187,10 @@ class GA(nn.Module):
         img_feature, text_feature = self.encoder_layers((img_feature, text_feature))
         src = cat([img_feature, text_feature], dim= 0)
         # src = self.encoder_fnn_norm(self.encoder_fnn_drop(src + self.encoder_fnn(src)))
-        src = self.encoder_fnn(self.encoder_fnn_drop(src))
+        src = self.encoder_fnn(self.encoder_fnn_drop(self.encoder_fnn_norm(src)))
 
         return src
 
-    def decoder_forward(self, src, tgt):
-        output = self.classifier(self.decoder(src, tgt))
+    def decoder_forward(self, src, tgt, tgt_attn_mask= None):
+        output = self.classifier(self.decoder(src, tgt, tgt_attn_mask))
         return output

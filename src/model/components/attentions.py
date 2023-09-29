@@ -207,6 +207,21 @@ class Block(nn.Module):
                 x = x + self.drop_path(self.gamma_2 * self.fnn_vl(self.norm2_vl(x)))
 
         return x
+    
+class ResidualConnection(nn.Module):
+    """
+    A residual connection followed by a layer norm.
+    Layer norm was pushed to the front for better performance and stability (facing grad vanishing/exploding while training using norm last).
+    https://arxiv.org/pdf/2002.04745.pdf
+    """
+    def __init__(self, size, dropout):
+        super(ResidualConnection, self).__init__()
+        self.norm = nn.LayerNorm(size)
+        self.dropout = nn.Dropout(dropout)
+
+    def forward(self, x, sublayer):
+        "Apply residual connection to any sublayer with the same size."
+        return x + self.dropout(sublayer(self.norm(x)))
 
 
 class TransformerDecoderLayer(nn.Module):
@@ -227,7 +242,8 @@ class TransformerDecoderLayer(nn.Module):
         self.decoder_layer = nn.TransformerDecoderLayer(
             d_model = d_model,
             nhead = nhead,
-            dim_feedforward = dim_feedforward
+            dim_feedforward = dim_feedforward,
+            norm_first= True
         ) 
 
         self.transformer_decoder = nn.TransformerDecoder(
@@ -270,45 +286,59 @@ class PositionalEncoding(nn.Module):
         return self.dropout(x)
         
 class GuidedAttention(nn.Module):
-    def __init__(self, dim, nheads, dropout, hidden_dim):
+    def __init__(self, dim, nheads, dropout, hidden_dim, act= nn.ReLU):
         super().__init__()
         self.text_attn = nn.MultiheadAttention(dim, nheads, dropout)
         self.img_attn = nn.MultiheadAttention(dim, nheads, dropout) 
         
-        self.text_drop = nn.Dropout(dropout)
-        self.img_drop = nn.Dropout(dropout)
+        # self.text_drop = nn.Dropout(dropout)
+        # self.img_drop = nn.Dropout(dropout)
 
-        self.text_norm = nn.LayerNorm(dim)
-        self.img_norm = nn.LayerNorm(dim)
+        # self.text_norm = nn.LayerNorm(dim)
+        # self.img_norm = nn.LayerNorm(dim)
+
+        self.img_attn_res = ResidualConnection(dim, dropout)
+        self.text_attn_res = ResidualConnection(dim, dropout)
 
         self.ga = nn.MultiheadAttention(dim, nheads, dropout)
-        self.ga_drop = nn.Dropout(dropout)
-        self.ga_norm = nn.LayerNorm(dim)
+        # self.ga_drop = nn.Dropout(dropout)
+        # self.ga_norm = nn.LayerNorm(dim)
+        self.ga_res = ResidualConnection(dim, dropout)
 
         self.img_ffn = nn.Sequential(
             nn.Linear(dim, hidden_dim),
+            act(),
             nn.Dropout(dropout),
             nn.Linear(hidden_dim, dim),
         )
-        self.img_ffn_drop = nn.Dropout(dropout)
-        self.img_ffn_norm = nn.LayerNorm(dim)
+        # self.img_ffn_drop = nn.Dropout(dropout)
+        # self.img_ffn_norm = nn.LayerNorm(dim)
+        self.img_ffn_res = ResidualConnection(dim, dropout)
 
         self.text_ffn = nn.Sequential(
             nn.Linear(dim, hidden_dim),
+            act(),
             nn.Dropout(dropout),
             nn.Linear(hidden_dim, dim),
         )
-        self.text_ffn_drop = nn.Dropout(dropout)
-        self.text_ffn_norm = nn.LayerNorm(dim)
+        # self.text_ffn_drop = nn.Dropout(dropout)
+        # self.text_ffn_norm = nn.LayerNorm(dim)
+        self.text_ffn_res = ResidualConnection(dim, dropout)
 
     def forward(self, inp):
         img, text = inp
-        text = self.text_norm(self.text_drop(text + self.text_attn(text, text, text)[0]))
-        img = self.img_norm(self.img_drop(img + self.img_attn(img, img, img)[0]))
+        # text = self.text_norm(self.text_drop(text + self.text_attn(text, text, text)[0]))
+        text = self.text_attn_res(text, lambda text: self.text_attn(text, text, text)[0])
 
-        ga = self.ga_norm(self.ga_drop(img + self.ga(img, text, text)[0]))
+        # img = self.img_norm(self.img_drop(img + self.img_attn(img, img, img)[0]))
+        img = self.img_attn_res(img, lambda img: self.img_attn(img, img, img)[0])
 
-        text = self.text_ffn_norm(self.text_ffn_drop(text + self.text_ffn(text)))
-        img = self.img_ffn_norm(self.img_ffn_drop(ga + self.img_ffn(ga)))
+        # ga = self.ga_norm(self.ga_drop(img + self.ga(img, text, text)[0]))
+        ga = self.ga_res(img, lambda img: self.ga(img, text, text)[0])
+
+        # text = self.text_ffn_norm(self.text_ffn_drop(text + self.text_ffn(text)))
+        text = self.text_ffn_res(text, lambda text: self.text_ffn(text))
+        # img = self.img_ffn_norm(self.img_ffn_drop(ga + self.img_ffn(ga)))
+        img = self.img_ffn_res(ga, lambda ga: self.img_ffn(ga))
 
         return ((img, text))

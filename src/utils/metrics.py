@@ -6,19 +6,24 @@ import torch
 
 from src.utils.evaluation import compute_scores
 
-from collections import defaultdict
-
 class BLEU_CIDEr(Metric):
     higher_is_better: bool = True
     def __init__(self):
         super().__init__()
-        self.add_state("preds", default= defaultdict(), dist_reduce_fx= 'sum')
-        self.add_state('labels', default= defaultdict(), dist_reduce_fx= 'sum')
+        self.add_state('keys', default= [])
+        self.add_state('preds', default= [])
+        self.add_state('labels', default= [])
 
-    def update(self, key, pred: List, label: List):
-        self.preds[key] = pred
-        self.labels[key] = label
+    def update(self, pred: List, label: List):
+        for i in range(len(pred)):
+            self.preds.append(pred[i])
+            self.labels.append(label[i])
     
     def compute(self):
-        score = compute_scores(self.labels, self.preds)
-        return (score['BLEU'], score['CIDEr'])
+        preds_dict = {}
+        labels_dict = {}
+        for i in range(len(self.labels)):
+            preds_dict[i] = [self.preds[i]]
+            labels_dict[i] = [self.labels[i]]
+        score = compute_scores(labels_dict, preds_dict)
+        return score

@@ -50,7 +50,8 @@ class VQADataset(Dataset):
         
         # TODO: Move to another seperate func
         if self.tokenizer:
-            bos_token_id = torch.tensor([self.tokenizer.pad_token_id]) # Hacky way using pad instead of bos for ViT5 TODO: fix this
+            # bos_token_id = torch.tensor([self.tokenizer.pad_token_id]) # Hacky way using pad instead of bos for ViT5 TODO: fix this
+            bos_token_id = torch.tensor([self.tokenizer.bos_token_id]) # Only with bartpho
             # question_tokenized = self.tokenizer(question, return_tensors = "pt", padding = 'longest') 
             question_tokenized = self.tokenizer(question, return_tensors = "pt", padding = 'max_length', max_length= self.max_length) 
             answer_tokenized = self.tokenizer(answer, return_tensors = "pt", padding = 'max_length', max_length= self.max_length) 

@@ -1,4 +1,4 @@
-from src.model.lit import VQALitModule, BaselineLitModule
+from src.model.lit import VQALitModule
 from src.model.model import VLMo, Baseline, GA
 from src.model.components.vision.encoders import ImageProcessorViT
 from src.dataset.datamodule import VQADataModule
@@ -21,7 +21,7 @@ if __name__ == '__main__':
     set_float32_matmul_precision('medium')
     MAX_LEN = 128
 
-    llm_url = 'VietAI/vit5-base'
+    llm_url = 'vinai/bartpho-syllable-base'
     tokenizer = AutoTokenizer.from_pretrained(llm_url)
     # tokenizer = get_tokenizer(llm_url)
 
@@ -41,8 +41,8 @@ if __name__ == '__main__':
     lr_monitor = LearningRateMonitor('step', True)
     ckpt_cb = ModelCheckpoint(
         dirpath= './weights',
-        filename= 'vqa_{epoch:02d}_{val_bleu:0.2f}',
-        monitor= 'val/bleu_4',
+        filename= 'vqa_{epoch:02d}_{step:02d}',
+        monitor= 'val/cider',
         save_on_train_epoch_end= True,
         save_top_k= 1,
     )
@@ -86,7 +86,12 @@ if __name__ == '__main__':
         num_sanity_val_steps= 2,
         check_val_every_n_epoch= 1,
         callbacks= [lr_monitor, ckpt_cb],
-        profiler= profiler
+        profiler= profiler,
+        gradient_clip_val= 0.5,
+        # fast_dev_run= True,
+        # limit_train_batches= 0.1,
+        # limit_val_batches= 0.1,
+        # detect_anomaly= True
     )
 
     trainer.fit(model, datamodule= dm)

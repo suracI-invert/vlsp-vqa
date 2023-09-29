@@ -1,7 +1,8 @@
 """import modules"""
 from torch import nn
 from torch.nn import Module
-from transformers import AutoModel, AutoTokenizer, AutoModelForSeq2SeqLM, T5EncoderModel
+from transformers import AutoModel, AutoTokenizer, AutoModelForSeq2SeqLM, T5EncoderModel, AutoConfig
+import torch
 
 class ViT5Encoder(Module):
     """
@@ -50,6 +51,8 @@ class BARTphoEncoder(Module):
         super().__init__()
         self.model = AutoModel.from_pretrained(pretrained)
         self.hidden_dim = hidden_dim
+        self.config = AutoConfig.from_pretrained(pretrained)
+        self.proj = nn.Linear(self.config.hidden_size*4, hidden_dim)
 
     def forward(self, input):
         """
@@ -60,21 +63,36 @@ class BARTphoEncoder(Module):
         # input.pop('token_type_ids', None)
 
         # TODO: fix this shit -> output no shape attribute (Seq2SeqModelOutput type) -> done?
-        outputs = self.model(**input)
+        # outputs = self.model(**input)
 
-        outputs_encoder_lhs = outputs.encoder_last_hidden_state
+        # outputs_encoder_lhs = outputs.encoder_last_hidden_state
 
-        # Get the last value of outputs_encoder_lhs (last hidden state) for each sequence in the batch - (batch size, hidden size)
-        last_hidden_state = outputs_encoder_lhs[:, -1, :]
-        # Extract the hidden_size dimension from last_hidden_state
-        hidden_size = last_hidden_state.size(-1)
-        # print(hidden_size)
+        # # Get the last value of outputs_encoder_lhs (last hidden state) for each sequence in the batch - (batch size, hidden size)
+        # last_hidden_state = outputs_encoder_lhs[:, -1, :]
+        # # Extract the hidden_size dimension from last_hidden_state
+        # hidden_size = last_hidden_state.size(-1)
+        # # print(hidden_size)
 
-        if self.hidden_dim != hidden_size:
-            outputs = nn.Linear(hidden_size, self.hidden_dim)
+        # if self.hidden_dim != hidden_size:
+        #     outputs = nn.Linear(hidden_size, self.hidden_dim)
   
-        return outputs_encoder_lhs
-    
+        # return outputs_encoder_lhs
+
+        # Return 4 layers of encoder concatinated for better performance
+        # See: https://www.kaggle.com/code/rhtsingh/utilizing-transformer-representations-efficiently
+        outputs = self.model(input['input_ids'], input['attention_mask'], output_hidden_states= True, return_dict= True)
+        print(outputs)
+        print(outputs.keys())
+        all_hidden_states = outputs.encoder_hidden_states
+
+        concatenate_pooling = torch.cat(
+            (all_hidden_states[-1], all_hidden_states[-2], all_hidden_states[-3], all_hidden_states[-4]),-1
+        )
+
+        logits = self.proj(concatenate_pooling) 
+
+        return logits
+
     def freeze(self):
         for param in self.model.parameters():
             param.requires_grad = False

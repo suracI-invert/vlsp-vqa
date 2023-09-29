@@ -59,12 +59,21 @@ class BARTphoEncoder(Module):
         # # Remove token_type_ids from the input dictionary [ONLY IF USE BARTPHO-WORD], tại trong MBart k có token_type_ids 
         # input.pop('token_type_ids', None)
 
-        # TODO: fix this shit -> output no shape attribute (Seq2SeqModelOutput type)
+        # TODO: fix this shit -> output no shape attribute (Seq2SeqModelOutput type) -> done?
         outputs = self.model(**input)
-        if self.hidden_dim != outputs.shape - 1:
-            outputs = nn.Linear(outputs.shape - 1, self.hidden_dim)
-      
-        return outputs.encoder_last_hidden_state
+
+        outputs_encoder_lhs = outputs.encoder_last_hidden_state
+
+        # Get the last value of outputs_encoder_lhs (last hidden state) for each sequence in the batch - (batch size, hidden size)
+        last_hidden_state = outputs_encoder_lhs[:, -1, :]
+        # Extract the hidden_size dimension from last_hidden_state
+        hidden_size = last_hidden_state.size(-1)
+        # print(hidden_size)
+
+        if self.hidden_dim != hidden_size:
+            outputs = nn.Linear(hidden_size, self.hidden_dim)
+  
+        return outputs_encoder_lhs
     
     def freeze(self):
         for param in self.model.parameters():

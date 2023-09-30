@@ -101,7 +101,7 @@ class GA(nn.Module):
                  d_model= 768, nheads_encoder= 8, 
                  nheads_decoder= 8, num_encoder_layers= 6, 
                  num_decoder_layers= 6, hidden_dim= 2048, 
-                 dropout_encoder= 0.2, act= nn.ReLU, freeze= True, return_loss= True
+                 dropout_encoder= 0.2, act= nn.ReLU(), norm_first= False, freeze= True, return_loss= True
                 ):
         super().__init__()
 
@@ -110,6 +110,8 @@ class GA(nn.Module):
         self.text_encoder = BARTphoEncoder()
 
         self.return_loss = return_loss
+
+        self.d_model = d_model
 
         if freeze:
             self.image_encoder.freeze()
@@ -120,7 +122,8 @@ class GA(nn.Module):
             nheads=nheads_encoder,  
             dropout=dropout_encoder,  
             hidden_dim= hidden_dim,
-            act= act
+            act= act,
+            norm_first= norm_first
         ) for _ in range(num_encoder_layers)])
 
         # self.encoder_fnn = nn.Sequential(
@@ -130,7 +133,7 @@ class GA(nn.Module):
         # )
 
         self.encoder_fnn_drop = nn.Dropout(dropout_encoder)
-        self.encoder_fnn_norm = nn.LayerNorm(d_model)
+        # self.encoder_fnn_norm = nn.LayerNorm(d_model)
 
         self.encoder_fnn = nn.Linear(d_model, d_model)
 
@@ -139,11 +142,14 @@ class GA(nn.Module):
             d_model= d_model,
             nhead=nheads_decoder, 
             dim_feedforward=hidden_dim,  
-            num_layers= num_decoder_layers 
+            num_layers= num_decoder_layers,
+            norm_first= norm_first,
+            act= act,
         )
 
         self.classifier = nn.Linear(d_model, vocab_size)
-        self.criterion = LabelSmoothingLoss(vocab_size, 1, 0.1)
+        # self.criterion = LabelSmoothingLoss(vocab_size, 1, 0.1)
+        self.criterion = nn.CrossEntropyLoss(ignore_index= pad_id, label_smoothing= 0.1)
         
 
     def forward(self, text, img, tgt):
@@ -187,7 +193,7 @@ class GA(nn.Module):
         img_feature, text_feature = self.encoder_layers((img_feature, text_feature))
         src = cat([img_feature, text_feature], dim= 0)
         # src = self.encoder_fnn_norm(self.encoder_fnn_drop(src + self.encoder_fnn(src)))
-        src = self.encoder_fnn(self.encoder_fnn_drop(self.encoder_fnn_norm(src)))
+        src = self.encoder_fnn(self.encoder_fnn_drop(src))
 
         return src
 

@@ -2,6 +2,10 @@ from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler
 
 class WarmupScheduler(_LRScheduler):
+    """
+    A custom lr_scheduler with warmup state to provide stability while training and
+    avoid gradient vanishing
+    """
     def __init__(self, optimizer: Optimizer, dim_embed: int, warmup_steps: int, last_epoch: int = -1, verbose= False):
         self.dim_embed = dim_embed
         self.warmup_steps = warmup_steps

@@ -214,14 +214,19 @@ class ResidualConnection(nn.Module):
     Layer norm was pushed to the front for better performance and stability (facing grad vanishing/exploding while training using norm last).
     https://arxiv.org/pdf/2002.04745.pdf
     """
-    def __init__(self, size, dropout):
+    def __init__(self, size, dropout, norm_first= False):
         super(ResidualConnection, self).__init__()
         self.norm = nn.LayerNorm(size)
         self.dropout = nn.Dropout(dropout)
+        self.norm_first = norm_first
 
     def forward(self, x, sublayer):
         "Apply residual connection to any sublayer with the same size."
-        return x + self.dropout(sublayer(self.norm(x)))
+        if self.norm_first:
+            x = x + self.dropout(sublayer(self.norm(x)))
+        else:
+            x = self.norm(x + self.dropout(sublayer(x)))
+        return x
 
 
 class TransformerDecoderLayer(nn.Module):
@@ -230,7 +235,9 @@ class TransformerDecoderLayer(nn.Module):
             d_model,
             nhead,
             dim_feedforward,
-            num_layers
+            num_layers,
+            act,
+            norm_first= False,
         ):
         super().__init__()
 
@@ -239,15 +246,16 @@ class TransformerDecoderLayer(nn.Module):
         self.pos_enc = PositionalEncoding(d_model)
         self.emb = nn.Embedding(vocab_size, d_model)
 
-        self.decoder_layer = nn.TransformerDecoderLayer(
+        decoder_layer = nn.TransformerDecoderLayer(
             d_model = d_model,
             nhead = nhead,
+            activation= act,
             dim_feedforward = dim_feedforward,
-            norm_first= True
+            norm_first= norm_first
         ) 
 
         self.transformer_decoder = nn.TransformerDecoder(
-            decoder_layer = self.decoder_layer,
+            decoder_layer = decoder_layer,
             num_layers = num_layers
         )
 
@@ -286,7 +294,7 @@ class PositionalEncoding(nn.Module):
         return self.dropout(x)
         
 class GuidedAttention(nn.Module):
-    def __init__(self, dim, nheads, dropout, hidden_dim, act= nn.ReLU):
+    def __init__(self, dim, nheads, dropout, hidden_dim, act, norm_first= False):
         super().__init__()
         self.text_attn = nn.MultiheadAttention(dim, nheads, dropout)
         self.img_attn = nn.MultiheadAttention(dim, nheads, dropout) 
@@ -297,33 +305,33 @@ class GuidedAttention(nn.Module):
         # self.text_norm = nn.LayerNorm(dim)
         # self.img_norm = nn.LayerNorm(dim)
 
-        self.img_attn_res = ResidualConnection(dim, dropout)
-        self.text_attn_res = ResidualConnection(dim, dropout)
+        self.img_attn_res = ResidualConnection(dim, dropout, norm_first)
+        self.text_attn_res = ResidualConnection(dim, dropout, norm_first)
 
         self.ga = nn.MultiheadAttention(dim, nheads, dropout)
         # self.ga_drop = nn.Dropout(dropout)
         # self.ga_norm = nn.LayerNorm(dim)
-        self.ga_res = ResidualConnection(dim, dropout)
+        self.ga_res = ResidualConnection(dim, dropout, norm_first)
 
         self.img_ffn = nn.Sequential(
             nn.Linear(dim, hidden_dim),
-            act(),
+            act,
             nn.Dropout(dropout),
             nn.Linear(hidden_dim, dim),
         )
         # self.img_ffn_drop = nn.Dropout(dropout)
         # self.img_ffn_norm = nn.LayerNorm(dim)
-        self.img_ffn_res = ResidualConnection(dim, dropout)
+        self.img_ffn_res = ResidualConnection(dim, dropout, norm_first)
 
         self.text_ffn = nn.Sequential(
             nn.Linear(dim, hidden_dim),
-            act(),
+            act,
             nn.Dropout(dropout),
             nn.Linear(hidden_dim, dim),
         )
         # self.text_ffn_drop = nn.Dropout(dropout)
         # self.text_ffn_norm = nn.LayerNorm(dim)
-        self.text_ffn_res = ResidualConnection(dim, dropout)
+        self.text_ffn_res = ResidualConnection(dim, dropout, norm_first)
 
     def forward(self, inp):
         img, text = inp

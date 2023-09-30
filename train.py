@@ -5,10 +5,12 @@ from src.dataset.datamodule import VQADataModule
 from src.dataset.components.DataAugmentation import ImageAugmentation
 
 from src.utils.tokenizer import get_tokenizer
+from src.utils.optim import WarmupScheduler
 
 from transformers import AutoTokenizer
 
 import torch
+from torch import nn
 from torch import set_float32_matmul_precision, rand
 from torchvision import transforms
 
@@ -17,27 +19,44 @@ from lightning.pytorch.callbacks import LearningRateMonitor, ModelCheckpoint, Ea
 from lightning.pytorch.profilers import AdvancedProfiler
 from lightning import Trainer
 
+import warnings
+warnings.filterwarnings("ignore", "Detected call of", UserWarning)
+"""
+    Disable warning (scheduler.step before optimizer.step). 
+    This is due to amp implementation, scaler will sometimes skip optimizer.step hench scheduler.step call raises warning. (this should not be concerned when trained with f32 precision)
+    Should not affect too much
+    Link: https://github.com/Lightning-AI/lightning/issues/5558
+"""
+
 if __name__ == '__main__':
     set_float32_matmul_precision('medium')
     MAX_LEN = 128
+
+    D_MODEL = 768
+    WARMUP_STEPS = 2000
 
     llm_url = 'vinai/bartpho-syllable-base'
     tokenizer = AutoTokenizer.from_pretrained(llm_url)
     # tokenizer = get_tokenizer(llm_url)
 
+    # scheduler_params = {
+    #     'mode': 'min',
+    #     'factor': 0.1,
+    #     'patience': 3,
+    #     'threshold': 1e-4,
+    #     'threshold_mode': 'rel',
+    #     'cooldown': 0,
+    #     'min_lr': 0,
+    #     'eps': 1e-8,
+    #     'verbose': True,
+    # }
+
     scheduler_params = {
-        'mode': 'min',
-        'factor': 0.1,
-        'patience': 3,
-        'threshold': 1e-4,
-        'threshold_mode': 'rel',
-        'cooldown': 0,
-        'min_lr': 0,
-        'eps': 1e-8,
-        'verbose': True,
+        'dim_embed': D_MODEL,
+        'warmup_steps': WARMUP_STEPS,
     }
 
-    es_cb = EarlyStopping('val/loss', min_delta= 0.0001, patience= 2)
+    es_cb = EarlyStopping('val/loss', min_delta= 0.0000001, patience= 2)
     lr_monitor = LearningRateMonitor('step', True)
     ckpt_cb = ModelCheckpoint(
         dirpath= './weights',
@@ -57,18 +76,17 @@ if __name__ == '__main__':
         transforms= ImageAugmentation(), 
         batch_size= 16,
         max_length= MAX_LEN,
-        # train_val_split= (28000, 2833),
+        num_workers= 6,
         tokenizer= tokenizer,
         processor= ImageProcessorViT()
     )
     dm.setup()
-    net = GA(tokenizer.vocab_size, tokenizer.pad_token_id, num_encoder_layers= 6, freeze= True)
+    net = GA(tokenizer.vocab_size, tokenizer.bos_token_id, num_encoder_layers= 6, d_model= D_MODEL, freeze= True, act= nn.GELU())
 
     model = VQALitModule(
-        net, tokenizer, torch.optim.AdamW, torch.optim.lr_scheduler.ReduceLROnPlateau,
-        learning_rate= 0.001,
-        scheduler_params= scheduler_params,
-        interval= 'epoch',
+        net, tokenizer, torch.optim.RAdam, WarmupScheduler,
+        learning_rate= 1.0e-8,
+        scheduler_params= scheduler_params
     )
 
     tb_logger = loggers.TensorBoardLogger(
@@ -78,7 +96,7 @@ if __name__ == '__main__':
     trainer = Trainer(
         accelerator= 'gpu',
         precision= '16-mixed',
-        max_time= '00:08:00:00',
+        # max_time= '00:08:00:00',
         max_epochs= 20,
         benchmark= True,
         logger= tb_logger,

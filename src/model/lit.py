@@ -25,9 +25,6 @@ class VQALitModule(LightningModule):
                 scheduler_params: Dict[str, Any] = {},
                 max_len: int = 64,
                 learning_rate: float = 0.001,
-                monitor_metric: str = 'val/loss',
-                interval: str = 'epoch',
-                frequency: int = 3,
             ):
         """
         wow
@@ -38,7 +35,7 @@ class VQALitModule(LightningModule):
         self.net = net
         for p in self.net.parameters():
             if p.dim() > 1 and p.requires_grad:
-                nn.init.xavier_uniform(p)
+                nn.init.xavier_uniform_(p)
         self.tokenizer = tokenizer
     
 
@@ -112,13 +109,14 @@ class VQALitModule(LightningModule):
 
         preds_text = self.tokenizer.batch_decode(preds_text_id)
         
-        self.val_score(preds_text, targets)
+        self.val_score.update(preds_text, targets)
 
 
     def on_validation_epoch_end(self) -> None:
             "Lightning hook that is called when a validation epoch ends."
 
             score = self.val_score.compute()
+            self.val_score.reset()
             bleu = score['BLEU']
             cider = score['CIDEr']
 
@@ -144,9 +142,8 @@ class VQALitModule(LightningModule):
                 'optimizer': optimizer,
                 'lr_scheduler': {
                     'scheduler': scheduler,
-                    'monitor': self.hparams.monitor_metric,
-                    'interval': self.hparams.interval,
-                    'frequency': self.hparams.frequency
+                    'interval': 'step',
+                    'frequency': 1
                 }
             }
         return {'optimizer': optimizer}

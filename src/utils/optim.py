@@ -17,6 +17,5 @@ class WarmupScheduler(_LRScheduler):
         lr = self._calc_lr(self._step_count, self.dim_embed, self.warmup_steps)
         return [lr] * self.num_param_groups
     
-    def _calc_lr(step, dim_embed, warmup_steps):
+    def _calc_lr(self, step, dim_embed, warmup_steps):
         return dim_embed**(-0.5) * min(step**(-0.5), step * warmup_steps**(-1.5))
-    

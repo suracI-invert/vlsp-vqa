@@ -2,7 +2,7 @@ from src.model.lit import VQALitModule
 from src.model.model import VLMo, Baseline, GA
 from src.model.components.vision.encoders import ImageProcessorViT
 from src.dataset.datamodule import VQADataModule
-from src.dataset.components.DataAugmentation import ImageAugmentation
+from src.dataset.components.DataAugmentation import ImageAugmentation, ImageAugmentationCNN
 
 from src.utils.tokenizer import get_tokenizer
 from src.utils.optim import WarmupScheduler
@@ -30,10 +30,10 @@ warnings.filterwarnings("ignore", "Detected call of", UserWarning)
 
 if __name__ == '__main__':
     set_float32_matmul_precision('medium')
-    MAX_LEN = 128
+    MAX_LEN = 256
 
-    D_MODEL = 768
-    WARMUP_STEPS = 2000
+    D_MODEL = 256
+    WARMUP_STEPS = 1500
 
     llm_url = 'vinai/bartpho-syllable-base'
     tokenizer = AutoTokenizer.from_pretrained(llm_url)
@@ -73,19 +73,28 @@ if __name__ == '__main__':
         'vlsp2023_train_data.json', 
         'dev-images', 
         'vlsp2023_dev_data.json', 
-        transforms= ImageAugmentation(), 
+        transforms= ImageAugmentationCNN(), 
         batch_size= 16,
         max_length= MAX_LEN,
         num_workers= 6,
         tokenizer= tokenizer,
-        processor= ImageProcessorViT()
+        # processor= ImageProcessorViT()
     )
     dm.setup()
-    net = GA(tokenizer.vocab_size, tokenizer.bos_token_id, num_encoder_layers= 6, d_model= D_MODEL, freeze= True, act= nn.GELU())
+    net = GA(
+        tokenizer.vocab_size, 
+        tokenizer.bos_token_id, 
+        num_encoder_layers= 6, 
+        d_model= D_MODEL, 
+        freeze= True, 
+        act= nn.GELU(),
+        hidden_dim= 1024,
+        dropout_encoder= 0.3
+    )
 
     model = VQALitModule(
         net, tokenizer, torch.optim.RAdam, WarmupScheduler,
-        learning_rate= 1.0e-8,
+        learning_rate= 1.0e-6,
         scheduler_params= scheduler_params
     )
 
@@ -104,7 +113,7 @@ if __name__ == '__main__':
         num_sanity_val_steps= 2,
         check_val_every_n_epoch= 1,
         callbacks= [lr_monitor, ckpt_cb],
-        profiler= profiler,
+        # profiler= profiler,
         gradient_clip_val= 0.5,
         # fast_dev_run= True,
         # limit_train_batches= 0.1,

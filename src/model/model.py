@@ -101,20 +101,21 @@ class GA(nn.Module):
                  d_model= 768, nheads_encoder= 8, 
                  nheads_decoder= 8, num_encoder_layers= 6, 
                  num_decoder_layers= 6, hidden_dim= 2048, 
-                 dropout_encoder= 0.2, act= nn.ReLU(), norm_first= False, freeze= True, return_loss= True
+                 dropout_encoder= 0.2, dropout_decoder= 0.2, act= nn.ReLU(), norm_first= False, freeze= True, return_loss= True
                 ):
         super().__init__()
 
-        self.image_encoder = ImageEncoderViT()
+        # self.image_encoder = ImageEncoderViT(dim= d_model)
+        self.image_encoder = EfficientNetEncoder(dim= d_model)
         # self.text_encoder = ViT5Encoder() # TODO: logic to change between diffenrent encoder
-        self.text_encoder = BARTphoEncoder()
+        self.text_encoder = BARTphoEncoder(hidden_dim= d_model)
 
         self.return_loss = return_loss
 
         self.d_model = d_model
 
         if freeze:
-            self.image_encoder.freeze()
+            # self.image_encoder.freeze()
             self.text_encoder.freeze()
 
         self.encoder_layers = nn.Sequential(*[GuidedAttention(
@@ -145,11 +146,11 @@ class GA(nn.Module):
             num_layers= num_decoder_layers,
             norm_first= norm_first,
             act= act,
+            dropout= dropout_decoder,
         )
 
         self.classifier = nn.Linear(d_model, vocab_size)
-        # self.criterion = LabelSmoothingLoss(vocab_size, 1, 0.1)
-        self.criterion = nn.CrossEntropyLoss(ignore_index= pad_id, label_smoothing= 0.1)
+        self.criterion = LabelSmoothingLoss(pad_id, 0.1)
         
 
     def forward(self, text, img, tgt):
@@ -178,7 +179,7 @@ class GA(nn.Module):
 
         if self.return_loss:
             return {
-                'loss': self.criterion(decoder_output.view(-1, decoder_output.size(2)), label_ids.view(-1)),
+                'loss': self.criterion(decoder_output, label_ids),
                 'logits': decoder_output
             }
         return {
@@ -198,5 +199,10 @@ class GA(nn.Module):
         return src
 
     def decoder_forward(self, src, tgt, tgt_attn_mask= None):
+        """
+        src: output of encoder (S, B, D)
+        tgt: input (shifted right with bos_token) (T, B, D)
+        """
         output = self.classifier(self.decoder(src, tgt, tgt_attn_mask))
         return output
+    

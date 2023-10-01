@@ -35,10 +35,11 @@ class ImageProcessorViT:
         }
     
 class ImageEncoderViT(nn.Module):
-    def __init__(self, pretrained_image_name: str = "microsoft/beit-base-patch16-224"):
+    def __init__(self, pretrained_image_name: str = "microsoft/beit-base-patch16-224", dim= 768):
         super(ImageEncoderViT, self).__init__()
         self.image_encoder = AutoModel.from_pretrained(pretrained_image_name)
         #self.preprocessor = AutoFeatureExtractor.from_pretrained(pretrained_image_name)
+        self.proj = nn.Linear(768, dim)
     
     def forward(self, pixel_values):
         """
@@ -47,7 +48,7 @@ class ImageEncoderViT(nn.Module):
         """
         # processed_image = self.preprocess_images(images)
         encoded_image = self.image_encoder(pixel_values, return_dict = True)
-        return encoded_image['last_hidden_state']
+        return self.proj(encoded_image['last_hidden_state'])
     
     def freeze(self):
         for param in self.image_encoder.parameters():
@@ -55,18 +56,19 @@ class ImageEncoderViT(nn.Module):
 
 
 class EfficientNetEncoder(nn.Module):
-    def __init__(self, pretrained_image_name: str = "efficientnet_b0"):
+    def __init__(self, pretrained_image_name: str = "efficientnet_b0", dim= 768):
         super(EfficientNetEncoder, self).__init__()
         model = timm.create_model(pretrained_image_name, pretrained=True)
         self.model = nn.Sequential(*list(model.children())[:-2])
         self.avgpool = nn.AdaptiveAvgPool2d(1)
+        self.proj = nn.Linear(1280, dim)
     
     def forward(self, images):
         """
         - input: image
         - output shape: (batch_size, feature_map_size, hidden_size) [1, feature_map_size, 1280]
         """
-        images = torch.stack(images)
+        # images = torch.stack(images)
         batch_size, c, h, w = images.shape
 
         x_resized_1 = images.view(batch_size , c, h, w)
@@ -76,4 +78,4 @@ class EfficientNetEncoder(nn.Module):
         fmap = fmap.view(batch_size, h * w, dim)
         #print(fmap.shape)
 
-        return fmap
+        return self.proj(fmap)

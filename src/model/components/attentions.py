@@ -238,6 +238,7 @@ class TransformerDecoderLayer(nn.Module):
             num_layers,
             act,
             norm_first= False,
+            dropout= 0.1,
         ):
         super().__init__()
 
@@ -251,7 +252,8 @@ class TransformerDecoderLayer(nn.Module):
             nhead = nhead,
             activation= act,
             dim_feedforward = dim_feedforward,
-            norm_first= norm_first
+            norm_first= norm_first,
+            dropout= dropout
         ) 
 
         self.transformer_decoder = nn.TransformerDecoder(

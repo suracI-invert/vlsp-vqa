@@ -4,6 +4,8 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 
+import math
+
 class DropPath(nn.Module):
     """
     Drop paths (Stochastic Depth) per sample  (when applied in main path of residual blocks).
@@ -205,85 +207,148 @@ class Block(nn.Module):
                 x = x + self.drop_path(self.gamma_2 * self.fnn_vl(self.norm2_vl(x)))
 
         return x
+    
+class ResidualConnection(nn.Module):
+    """
+    A residual connection followed by a layer norm.
+    Layer norm was pushed to the front for better performance and stability (facing grad vanishing/exploding while training using norm last).
+    https://arxiv.org/pdf/2002.04745.pdf
+    """
+    def __init__(self, size, dropout, norm_first= False):
+        super(ResidualConnection, self).__init__()
+        self.norm = nn.LayerNorm(size)
+        self.dropout = nn.Dropout(dropout)
+        self.norm_first = norm_first
+
+    def forward(self, x, sublayer):
+        "Apply residual connection to any sublayer with the same size."
+        if self.norm_first:
+            x = x + self.dropout(sublayer(self.norm(x)))
+        else:
+            x = self.norm(x + self.dropout(sublayer(x)))
+        return x
 
 
 class TransformerDecoderLayer(nn.Module):
     def __init__(self,
+            vocab_size,
             d_model,
             nhead,
             dim_feedforward,
-            num_layers
+            num_layers,
+            act,
+            norm_first= False,
+            dropout= 0.1,
         ):
         super().__init__()
 
-        self.decoder_layer = nn.TransformerDecoderLayer(
+        self.d_model = d_model
+
+        self.pos_enc = PositionalEncoding(d_model)
+        self.emb = nn.Embedding(vocab_size, d_model)
+
+        decoder_layer = nn.TransformerDecoderLayer(
             d_model = d_model,
             nhead = nhead,
-            dim_feedforward = dim_feedforward
+            activation= act,
+            dim_feedforward = dim_feedforward,
+            norm_first= norm_first,
+            dropout= dropout
         ) 
 
         self.transformer_decoder = nn.TransformerDecoder(
-            decoder_layer = self.decoder_layer,
+            decoder_layer = decoder_layer,
             num_layers = num_layers
         )
 
-    def forward(self, src, tgt):
+    def forward(self, src, tgt, tgt_attn_mask= None):
+        tgt_padding_mask = (tgt_attn_mask == 0).to(tgt.device) if tgt_attn_mask is not None else None
+        # tgt_padding_mask = tgt_padding_mask.to(tgt.device)
+        tgt = tgt.transpose(0, 1)
         tgt_seq_len = tgt.shape[0]
-        subsequent_mask = self.gen_mask(tgt_seq_len)
-    
-        output = self.transformer_decoder(src, tgt, tgt_mask=subsequent_mask)
+        subsequent_mask = self.gen_mask(tgt_seq_len).to(tgt.device)
+        tgt = self.pos_enc(self.emb(tgt) * math.sqrt(self.d_model))
+        output = self.transformer_decoder(tgt, src, tgt_mask=subsequent_mask, tgt_key_padding_mask= tgt_padding_mask)
         
-        return output
+        return output.transpose(0, 1)
     
     def gen_mask(self, tgt_len):
         subsequent_mask = torch.triu(torch.ones(tgt_len, tgt_len) == 1).transpose(0, 1)
         subsequent_mask = subsequent_mask.float().masked_fill(subsequent_mask == 0, float('-inf')).masked_fill(subsequent_mask == 1, float(0.0))
         return subsequent_mask
 
-        
+class PositionalEncoding(nn.Module):
+    def __init__(self, d_model, dropout=0.1, max_len= 5000):
+        super(PositionalEncoding, self).__init__()
+        self.dropout = nn.Dropout(p=dropout)
+
+        pe = torch.zeros(max_len, d_model)
+        position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model))
+        pe[:, 0::2] = torch.sin(position * div_term)
+        pe[:, 1::2] = torch.cos(position * div_term)
+        pe = pe.unsqueeze(0).transpose(0, 1)
+        self.register_buffer('pe', pe)
+
+    def forward(self, x):
+        x = x + self.pe[:x.size(0), :]
+
+        return self.dropout(x)
         
 class GuidedAttention(nn.Module):
-    def __init__(self, dim, nheads, dropout, hidden_dim):
+    def __init__(self, dim, nheads, dropout, hidden_dim, act, norm_first= False):
         super().__init__()
         self.text_attn = nn.MultiheadAttention(dim, nheads, dropout)
         self.img_attn = nn.MultiheadAttention(dim, nheads, dropout) 
         
-        self.text_drop = nn.Dropout(dropout)
-        self.img_drop = nn.Dropout(dropout)
+        # self.text_drop = nn.Dropout(dropout)
+        # self.img_drop = nn.Dropout(dropout)
 
-        self.text_norm = nn.LayerNorm(dim)
-        self.img_norm = nn.LayerNorm(dim)
+        # self.text_norm = nn.LayerNorm(dim)
+        # self.img_norm = nn.LayerNorm(dim)
+
+        self.img_attn_res = ResidualConnection(dim, dropout, norm_first)
+        self.text_attn_res = ResidualConnection(dim, dropout, norm_first)
 
         self.ga = nn.MultiheadAttention(dim, nheads, dropout)
-        self.ga_drop = nn.Dropout(dropout)
-        self.ga_norm = nn.LayerNorm(dim)
+        # self.ga_drop = nn.Dropout(dropout)
+        # self.ga_norm = nn.LayerNorm(dim)
+        self.ga_res = ResidualConnection(dim, dropout, norm_first)
 
         self.img_ffn = nn.Sequential(
             nn.Linear(dim, hidden_dim),
+            act,
             nn.Dropout(dropout),
             nn.Linear(hidden_dim, dim),
         )
-        self.img_ffn_drop = nn.Dropout(dropout)
-        self.img_ffn_norm = nn.LayerNorm(dim)
+        # self.img_ffn_drop = nn.Dropout(dropout)
+        # self.img_ffn_norm = nn.LayerNorm(dim)
+        self.img_ffn_res = ResidualConnection(dim, dropout, norm_first)
 
         self.text_ffn = nn.Sequential(
             nn.Linear(dim, hidden_dim),
+            act,
             nn.Dropout(dropout),
             nn.Linear(hidden_dim, dim),
         )
-        self.text_ffn_drop = nn.Dropout(dropout)
-        self.text_ffn_norm = nn.LayerNorm(dim)
+        # self.text_ffn_drop = nn.Dropout(dropout)
+        # self.text_ffn_norm = nn.LayerNorm(dim)
+        self.text_ffn_res = ResidualConnection(dim, dropout, norm_first)
 
-        self.fcn = nn.Linear(dim, dim) 
+    def forward(self, inp):
+        img, text = inp
+        # text = self.text_norm(self.text_drop(text + self.text_attn(text, text, text)[0]))
+        text = self.text_attn_res(text, lambda text: self.text_attn(text, text, text)[0])
 
-    def forward(self, img, text):
-        text = self.text_norm(self.text_drop(text + self.text_attn(text, text, text)[0]))
-        img = self.img_norm(self.img_drop(img + self.img_attn(img, img, img)[0]))
+        # img = self.img_norm(self.img_drop(img + self.img_attn(img, img, img)[0]))
+        img = self.img_attn_res(img, lambda img: self.img_attn(img, img, img)[0])
 
-        ga = self.ga_norm(self.ga_drop(img + self.ga(img, text, text)[0]))
+        # ga = self.ga_norm(self.ga_drop(img + self.ga(img, text, text)[0]))
+        ga = self.ga_res(img, lambda img: self.ga(img, text, text)[0])
 
-        text = self.text_ffn_norm(self.text_ffn_drop(text + self.text_ffn(text)))
-        img = self.img_ffn_norm(self.img_ffn_drop(ga + self.img_ffn(ga)))
+        # text = self.text_ffn_norm(self.text_ffn_drop(text + self.text_ffn(text)))
+        text = self.text_ffn_res(text, lambda text: self.text_ffn(text))
+        # img = self.img_ffn_norm(self.img_ffn_drop(ga + self.img_ffn(ga)))
+        img = self.img_ffn_res(ga, lambda ga: self.img_ffn(ga))
 
-        out = torch.cat([img, text], dim= 1)
-        return self.fcn(out)    # nhg ma minh van deo hieu test kieu gi :D 
+        return ((img, text))

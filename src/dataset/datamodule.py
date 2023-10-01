@@ -63,17 +63,15 @@ class VQADataModule(LightningDataModule):
     def setup(self, stage: Optional[str] = None) -> None:
 
         if not self.setup_called:
-            with open(os.path.join(self.hparams.root_dir, 'labels.json'), 'r', encoding= 'utf8') as f:
-                self.labels2id = json.load(f)
             self.setup_called = True
             dataset = VQADataset(self.hparams.root_dir, map_file= self.hparams.map_file, data_dir= self.hparams.data_dir,
-                                labels2id= self.labels2id, tokenizer= self.hparams.tokenizer, processor= self.hparams.processor, 
+                                tokenizer= self.hparams.tokenizer, processor= self.hparams.processor, 
                                 transforms= self.hparams.transforms, max_length= self.hparams.max_length
                                 )
             if not self.hparams.train_val_split:
                 self.data_train = dataset
                 self.data_valid = VQADataset(self.hparams.root_dir, self.hparams.test_map_file, self.hparams.test_dir, 
-                                             labels2id= self.labels2id, tokenizer= self.hparams.tokenizer, processor= self.hparams.processor, 
+                                             tokenizer= self.hparams.tokenizer, processor= self.hparams.processor, 
                                              transforms= self.hparams.transforms, max_length= self.hparams.max_length)
             # else:
             #     self.data_train, self.data_valid = random_split(
@@ -81,8 +79,10 @@ class VQADataModule(LightningDataModule):
             #         lengths= self.hparams.train_val_split,
             #         generator= Generator().manual_seed(42)
             #     )
-            # if self.hparams.test_dir and not self.data_test:
-            #     self.data_test = VQADataset(self.hparams.root_dir, self.hparams.test_map_file, self.hparams.test_dir, tokenizer= self.hparams.tokenizer, processor= self.hparams.processor, transforms= self.hparams.transforms, max_length= self.hparams.max_length)
+            if self.hparams.test_dir and not self.data_test:
+                self.data_test = VQADataset(self.hparams.root_dir, self.hparams.test_map_file, self.hparams.test_dir, 
+                                            tokenizer= self.hparams.tokenizer, processor= self.hparams.processor, 
+                                            transforms= self.hparams.transforms, max_length= self.hparams.max_length)
 
     def train_dataloader(self) -> DataLoader:
         return DataLoader(

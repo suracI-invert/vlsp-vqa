@@ -1,3 +1,5 @@
+import argparse
+
 from src.model.lit import VQALitModule
 from src.model.model import VLMo, Baseline, GA
 from src.model.components.vision.encoders import ImageProcessorViT
@@ -30,13 +32,17 @@ warnings.filterwarnings("ignore", "Detected call of", UserWarning)
 """
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--dir', required= False)
+    args = parser.parse_args()
+
     set_float32_matmul_precision('medium')
     MAX_LEN = 256
 
     D_MODEL = 512
     WARMUP_STEPS = 10000
 
-    DATA_DIR = './data'
+    DATA_DIR = './data' if args.dir is None else args.dir
 
     llm_url = 'vinai/bartpho-syllable-base'
     tokenizer = AutoTokenizer.from_pretrained(llm_url)

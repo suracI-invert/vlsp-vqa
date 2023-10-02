@@ -42,7 +42,11 @@ if __name__ == '__main__':
     D_MODEL = 512
     WARMUP_STEPS = 10000
 
-    DATA_DIR = './data' if args.dir is None else args.dir
+    DATA_DIR = './data'
+    if parser.dir is None:
+        print('No data directory set, default to: ./data')
+    else:
+        DATA_DIR = parser.dir
     print(DATA_DIR)
 
     llm_url = 'vinai/bartpho-syllable-base'

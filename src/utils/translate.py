@@ -113,16 +113,8 @@ def beam(model, img, text, bos_token_id, eos_token_id, pad_token_id, max_len, be
     with torch.no_grad():
         mem, mem_mask = model.encoder_forward(text, img)
         for i in range(batch_size):
-            print(i)
-            print('_' * 50)
-            print(mem.shape)
-            print(mem_mask.shape)
-            print('-' * 50)
             new_mem = mem[:, [i], :]
             new_mem_mask = mem_mask[[i], :]
-            print(mem.shape)
-            print(mem_mask.shape)
-            print('*' * 50)
             sent = search(model, new_mem, new_mem_mask, device, bos_token_id, eos_token_id, pad_token_id, max_len, beam_size, min_length, n_top)
             sents.append(sent)
     sents = np.asarray(sents)

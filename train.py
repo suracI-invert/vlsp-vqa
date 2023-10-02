@@ -43,11 +43,11 @@ if __name__ == '__main__':
     WARMUP_STEPS = 10000
 
     DATA_DIR = './data'
-    if parser.dir is None:
+    if args.dir is None:
         print('No data directory set, default to: ./data')
     else:
-        print('data dir set to: ' + parser.dir)
-        DATA_DIR = parser.dir
+        print('data dir set to: ' + args.dir)
+        DATA_DIR = args.dir
 
     llm_url = 'vinai/bartpho-syllable-base'
     tokenizer = AutoTokenizer.from_pretrained(llm_url)

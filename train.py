@@ -43,6 +43,7 @@ if __name__ == '__main__':
     WARMUP_STEPS = 10000
 
     DATA_DIR = './data' if args.dir is None else args.dir
+    print(DATA_DIR)
 
     llm_url = 'vinai/bartpho-syllable-base'
     tokenizer = AutoTokenizer.from_pretrained(llm_url)

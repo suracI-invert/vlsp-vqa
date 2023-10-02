@@ -106,6 +106,7 @@ class VQALitModule(LightningModule):
             self.tokenizer.eos_token_id,
             self.tokenizer.pad_token_id,
             self.hparams.max_len,
+            'beam', 4
         )
 
         preds_text = self.tokenizer.batch_decode(preds_text_id, skip_special_tokens= True)

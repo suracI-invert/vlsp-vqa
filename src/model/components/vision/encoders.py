@@ -49,7 +49,7 @@ class ImageEncoderViT(nn.Module):
         # processed_image = self.preprocess_images(images)
         encoded_image = self.image_encoder(pixel_values, return_dict = True)
         return self.proj(encoded_image['last_hidden_state'])
-    
+        # return encoded_image    
     def freeze(self):
         for param in self.image_encoder.parameters():
             param.requires_grad = False

@@ -261,14 +261,14 @@ class TransformerDecoderLayer(nn.Module):
             num_layers = num_layers
         )
 
-    def forward(self, src, tgt, tgt_attn_mask= None):
+    def forward(self, src, tgt, src_attn_mask= None, tgt_attn_mask= None):
         tgt_padding_mask = (tgt_attn_mask == 0).to(tgt.device) if tgt_attn_mask is not None else None
         # tgt_padding_mask = tgt_padding_mask.to(tgt.device)
         tgt = tgt.transpose(0, 1)
         tgt_seq_len = tgt.shape[0]
         subsequent_mask = self.gen_mask(tgt_seq_len).to(tgt.device)
         tgt = self.pos_enc(self.emb(tgt) * math.sqrt(self.d_model))
-        output = self.transformer_decoder(tgt, src, tgt_mask=subsequent_mask, tgt_key_padding_mask= tgt_padding_mask)
+        output = self.transformer_decoder(tgt, src, memory_key_padding_mask= src_attn_mask, tgt_mask=subsequent_mask, tgt_key_padding_mask= tgt_padding_mask)
         
         return output.transpose(0, 1)
     
@@ -335,16 +335,15 @@ class GuidedAttention(nn.Module):
         # self.text_ffn_norm = nn.LayerNorm(dim)
         self.text_ffn_res = ResidualConnection(dim, dropout, norm_first)
 
-    def forward(self, inp):
-        img, text = inp
+    def forward(self, img, text, text_mask):
         # text = self.text_norm(self.text_drop(text + self.text_attn(text, text, text)[0]))
-        text = self.text_attn_res(text, lambda text: self.text_attn(text, text, text)[0])
+        text = self.text_attn_res(text, lambda text: self.text_attn(text, text, text, key_padding_mask= text_mask)[0])
 
         # img = self.img_norm(self.img_drop(img + self.img_attn(img, img, img)[0]))
         img = self.img_attn_res(img, lambda img: self.img_attn(img, img, img)[0])
 
         # ga = self.ga_norm(self.ga_drop(img + self.ga(img, text, text)[0]))
-        ga = self.ga_res(img, lambda img: self.ga(img, text, text)[0])
+        ga = self.ga_res(img, lambda img: self.ga(img, text, text, key_padding_mask= text_mask)[0])
 
         # text = self.text_ffn_norm(self.text_ffn_drop(text + self.text_ffn(text)))
         text = self.text_ffn_res(text, lambda text: self.text_ffn(text))

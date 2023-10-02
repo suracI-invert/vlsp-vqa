@@ -34,6 +34,7 @@ warnings.filterwarnings("ignore", "Detected call of", UserWarning)
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--dir', required= False)
+    parser.add_argument('--worker', required= False)
     args = parser.parse_args()
 
     set_float32_matmul_precision('medium')
@@ -48,6 +49,8 @@ if __name__ == '__main__':
     else:
         print('data dir set to: ' + args.dir)
         DATA_DIR = args.dir
+
+    num_workers = args.worker if args.worker is not None else 2
 
     llm_url = 'vinai/bartpho-syllable-base'
     tokenizer = AutoTokenizer.from_pretrained(llm_url)
@@ -94,7 +97,7 @@ if __name__ == '__main__':
         transforms= ImageAugmentation(), 
         batch_size= 16,
         max_length= MAX_LEN,
-        num_workers= 6,
+        num_workers= num_workers,
         tokenizer= tokenizer,
         collate_fn= Collator(tokenizer),
         # processor= ImageProcessorViT()

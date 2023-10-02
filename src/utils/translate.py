@@ -125,8 +125,6 @@ def search(model, mem, mem_mask, device, bos_token_id, eos_token_id, pad_token_i
     with torch.no_grad():
         mem = mem.repeat(1, beam.beam_size, 1)
         mem_mask = mem_mask.repeat(beam.beam_size, 1)
-        print(mem.shape)
-        print(mem_mask.shape)
         for _ in range(max_len):
             tgt = beam.get_current_state().to(device)
             output = model.decoder_forward(mem, tgt, src_attn_mask= mem_mask)

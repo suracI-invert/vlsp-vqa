@@ -100,7 +100,7 @@ if __name__ == '__main__':
         num_workers= num_workers,
         tokenizer= tokenizer,
         collate_fn= Collator(tokenizer),
-        # processor= ImageProcessorViT()
+        processor= ImageProcessorViT()
     )
     dm.setup()
     net = GA(

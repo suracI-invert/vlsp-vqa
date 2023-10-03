@@ -24,7 +24,7 @@ class Collator(object):
         tgt = self.tokenizer(answers, return_tensors= 'pt', padding= 'longest')
 
         return {
-            'img': torch.tensor(np.array(img, dtype= np.float32)),
+            'img': torch.stack(img),
             'src': src,
             'tgt': tgt,
             'answer': answers

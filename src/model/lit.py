@@ -12,6 +12,8 @@ from src.utils.metrics import BLEU_CIDEr
 from src.model.model import VLMo
 from src.utils.translate import translate
 
+import random
+
 class VQALitModule(LightningModule):
     """
         Currently doing multilabel classification with a mapping label to id. No gen yet
@@ -47,8 +49,8 @@ class VQALitModule(LightningModule):
         self.val_bleu_best = MaxMetric()
         self.val_cider_best = MaxMetric()
 
-    def forward(self, text, img, tgt):
-        return self.net(text, img, tgt) 
+    def forward(self, text, img, tgt, tgt_label):
+        return self.net(text, img, tgt, tgt_label) 
 
     def model_step(self, batch):
         """Perform a single model step on a batch of data.
@@ -60,13 +62,13 @@ class VQALitModule(LightningModule):
             - Logits.
         """
         img = batch['img']
-        text = batch['tokenized_question']
-        tgt = batch['tokenized_answer']
-        output = self.forward(text, img, tgt)
+        text = batch['src']
+        tgt = batch['tgt']
+        tgt_label = batch['tgt_label']
+        output = self.forward(text, img, tgt, tgt_label)
 
         # loss.requires_grad = True #??? why does loss lost grad
         return output['loss'], output['logits']
-
 
     def training_step(self, batch, batch_idx):
         """Perform a single training step on a batch of data from the training set.
@@ -100,14 +102,15 @@ class VQALitModule(LightningModule):
 
         preds_text_id = translate(
             self.net, batch['img'], 
-            batch['tokenized_question'], 
-            self.tokenizer.pad_token_id, # ViT5 no bos_token, cant add due to embedding size limit TODO: stop this hack
+            batch['src'], 
+            self.tokenizer.bos_token_id,
             self.tokenizer.eos_token_id,
             self.tokenizer.pad_token_id,
             self.hparams.max_len,
+            'greedy', 4
         )
 
-        preds_text = self.tokenizer.batch_decode(preds_text_id)
+        preds_text = self.tokenizer.batch_decode(preds_text_id, skip_special_tokens= True)
         
         self.val_score.update(preds_text, targets)
 
@@ -116,6 +119,11 @@ class VQALitModule(LightningModule):
             "Lightning hook that is called when a validation epoch ends."
 
             score = self.val_score.compute()
+
+            p, l = random.sample(self.val_score.val, 1)[0]
+            self.logger.experiment.add_text(f'Target', l, self.current_epoch)
+            self.logger.experiment.add_text(f'Prediction', p, self.current_epoch)
+
             self.val_score.reset()
             bleu = score['BLEU']
             cider = score['CIDEr']

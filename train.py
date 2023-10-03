@@ -1,8 +1,11 @@
+import argparse
+
 from src.model.lit import VQALitModule
 from src.model.model import VLMo, Baseline, GA
 from src.model.components.vision.encoders import ImageProcessorViT
 from src.dataset.datamodule import VQADataModule
 from src.dataset.components.DataAugmentation import ImageAugmentation, ImageAugmentationCNN
+from src.dataset.components.collator import Collator
 
 from src.utils.tokenizer import get_tokenizer
 from src.utils.optim import WarmupScheduler
@@ -29,11 +32,25 @@ warnings.filterwarnings("ignore", "Detected call of", UserWarning)
 """
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--dir', required= False)
+    parser.add_argument('--worker', required= False)
+    args = parser.parse_args()
+
     set_float32_matmul_precision('medium')
     MAX_LEN = 256
 
-    D_MODEL = 256
-    WARMUP_STEPS = 1500
+    D_MODEL = 512
+    WARMUP_STEPS = 10000
+
+    DATA_DIR = './data'
+    if args.dir is None:
+        print('No data directory set, default to: ./data')
+    else:
+        print('data dir set to: ' + args.dir)
+        DATA_DIR = args.dir
+
+    num_workers = int(args.worker) if args.worker is not None else 2
 
     llm_url = 'vinai/bartpho-syllable-base'
     tokenizer = AutoTokenizer.from_pretrained(llm_url)
@@ -55,12 +72,16 @@ if __name__ == '__main__':
         'dim_embed': D_MODEL,
         'warmup_steps': WARMUP_STEPS,
     }
+    # scheduler_params = {
+    #     'gamma': 0.5
+    # }
+
 
     es_cb = EarlyStopping('val/loss', min_delta= 0.0000001, patience= 2)
     lr_monitor = LearningRateMonitor('step', True)
     ckpt_cb = ModelCheckpoint(
         dirpath= './weights',
-        filename= 'vqa_{epoch:02d}_{step:02d}',
+        filename= 'vqa_v2_{epoch:02d}_{step:02d}',
         monitor= 'val/cider',
         save_on_train_epoch_end= True,
         save_top_k= 1,
@@ -68,34 +89,34 @@ if __name__ == '__main__':
     profiler = AdvancedProfiler('./log/profiler', filename= 'perf_logs')
 
     dm = VQADataModule(
-        './data', 
+        DATA_DIR, 
         'training-images', 
         'vlsp2023_train_data.json', 
         'dev-images', 
         'vlsp2023_dev_data.json', 
-        transforms= ImageAugmentationCNN(), 
+        transforms= ImageAugmentation(), 
         batch_size= 16,
         max_length= MAX_LEN,
-        num_workers= 6,
+        num_workers= num_workers,
         tokenizer= tokenizer,
+        collate_fn= Collator(tokenizer),
         # processor= ImageProcessorViT()
     )
     dm.setup()
     net = GA(
         tokenizer.vocab_size, 
         tokenizer.bos_token_id, 
-        num_encoder_layers= 6, 
+        num_encoder_layers= 3, 
+        num_decoder_layers= 3,
         d_model= D_MODEL, 
         freeze= True, 
         act= nn.GELU(),
-        hidden_dim= 1024,
+        hidden_dim= 2048,
         dropout_encoder= 0.3
     )
 
     model = VQALitModule(
-        net, tokenizer, torch.optim.RAdam, WarmupScheduler,
-        learning_rate= 1.0e-6,
-        scheduler_params= scheduler_params
+        net, tokenizer, torch.optim.RAdam, WarmupScheduler, scheduler_params= scheduler_params, learning_rate= 1e-9
     )
 
     tb_logger = loggers.TensorBoardLogger(
@@ -104,9 +125,9 @@ if __name__ == '__main__':
 
     trainer = Trainer(
         accelerator= 'gpu',
-        precision= '16-mixed',
+        precision= '32',
         # max_time= '00:08:00:00',
-        max_epochs= 20,
+        max_epochs= 30,
         benchmark= True,
         logger= tb_logger,
         log_every_n_steps= 5,

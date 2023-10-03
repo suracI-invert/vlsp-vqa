@@ -92,12 +92,13 @@ class BARTphoEncoder(Module):
         all_hidden_states = outputs.encoder_hidden_states
 
         concatenate_pooling = torch.cat(
-            (all_hidden_states[-2], all_hidden_states[-3], all_hidden_states[-4], all_hidden_states[-5]), -1
+            (all_hidden_states[-1], all_hidden_states[-2], all_hidden_states[-3], all_hidden_states[-4]), -1
         )
 
         logits = self.proj(concatenate_pooling) 
 
         return logits
+        # return outputs
 
     def freeze(self):
         for param in self.model.parameters():

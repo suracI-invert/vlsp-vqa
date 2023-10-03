@@ -50,7 +50,7 @@ if __name__ == '__main__':
         print('data dir set to: ' + args.dir)
         DATA_DIR = args.dir
 
-    num_workers = args.worker if args.worker is not None else 2
+    num_workers = int(args.worker) if args.worker is not None else 2
 
     llm_url = 'vinai/bartpho-syllable-base'
     tokenizer = AutoTokenizer.from_pretrained(llm_url)

@@ -49,8 +49,8 @@ class VQALitModule(LightningModule):
         self.val_bleu_best = MaxMetric()
         self.val_cider_best = MaxMetric()
 
-    def forward(self, text, img, tgt):
-        return self.net(text, img, tgt) 
+    def forward(self, text, img, tgt, tgt_label):
+        return self.net(text, img, tgt, tgt_label) 
 
     def model_step(self, batch):
         """Perform a single model step on a batch of data.
@@ -64,7 +64,8 @@ class VQALitModule(LightningModule):
         img = batch['img']
         text = batch['src']
         tgt = batch['tgt']
-        output = self.forward(text, img, tgt)
+        tgt_label = batch['tgt_label']
+        output = self.forward(text, img, tgt, tgt_label)
 
         # loss.requires_grad = True #??? why does loss lost grad
         return output['loss'], output['logits']
@@ -106,7 +107,7 @@ class VQALitModule(LightningModule):
             self.tokenizer.eos_token_id,
             self.tokenizer.pad_token_id,
             self.hparams.max_len,
-            'beam', 4
+            'greedy', 4
         )
 
         preds_text = self.tokenizer.batch_decode(preds_text_id, skip_special_tokens= True)

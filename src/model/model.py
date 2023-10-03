@@ -1,4 +1,4 @@
-from torch import nn, cat, no_grad, tensor, rand, BoolTensor
+from torch import nn, cat, no_grad, tensor, rand, ones
 from src.model.components.vision.encoders import EfficientNetEncoder, ImageEncoderViT
 from src.model.components.language.encoders import ViT5Encoder, BARTphoEncoder
 from src.model.components.transformer import MultiwayTransformer
@@ -136,8 +136,7 @@ class GA(nn.Module):
         self.criterion = LabelSmoothingLoss(pad_id, 0.1)
         
 
-    def forward(self, text, img, tgt):
-        label_ids = tgt['input_ids']
+    def forward(self, text, img, tgt, tgt_label):
         # text_feature = self.text_encoder(text)
         # img_feature = self.image_encoder(img)
 
@@ -162,7 +161,7 @@ class GA(nn.Module):
 
         if self.return_loss:
             return {
-                'loss': self.criterion(decoder_output, label_ids),
+                'loss': self.criterion(decoder_output, tgt_label),
                 'logits': decoder_output
             }
         return {
@@ -170,6 +169,9 @@ class GA(nn.Module):
         }
     
     def encoder_forward(self, text, img):
+        """
+            - Output: src(seq_len, batch_size, d_model) mask(batch_size, seq_len)
+        """
         text_attn_mask = (text['attention_mask'] == 0)
         text_feature = self.text_encoder(text)
         img_feature = self.image_encoder(img)
@@ -179,8 +181,8 @@ class GA(nn.Module):
         for l in self.encoder_layers:
             img_feature, text_feature = l(img_feature, text_feature, text_attn_mask)
         src = cat([img_feature, text_feature], dim= 0)
-        img_attn_mask = BoolTensor(size= (text_attn_mask.shape[0], img_feature.shape[0])).to(text_attn_mask.device)
-        src_attn_mask = cat([text_attn_mask, img_attn_mask], dim= -1)
+        img_attn_mask = ones(size= (text_attn_mask.shape[0], img_feature.shape[0])).to(text_attn_mask.device) == 0
+        src_attn_mask = cat([img_attn_mask, text_attn_mask], dim= -1)
         src = self.encoder_fnn(self.encoder_fnn_drop(src))
 
         return self.encoder_fnn_norm(src), src_attn_mask

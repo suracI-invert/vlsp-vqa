@@ -40,7 +40,7 @@ if __name__ == '__main__':
     set_float32_matmul_precision('medium')
     MAX_LEN = 256
 
-    D_MODEL = 512
+    D_MODEL = 768
     WARMUP_STEPS = 10000
 
     DATA_DIR = './data'
@@ -77,12 +77,12 @@ if __name__ == '__main__':
     # }
 
 
-    es_cb = EarlyStopping('val/loss', min_delta= 0.0000001, patience= 2)
+    es_cb = EarlyStopping('val/loss', min_delta= 0.0000001, patience= 3)
     lr_monitor = LearningRateMonitor('step', True)
     ckpt_cb = ModelCheckpoint(
         dirpath= './weights',
         filename= 'vqa_v2_{epoch:02d}_{step:02d}',
-        monitor= 'val/cider',
+        monitor= 'val/loss',
         save_on_train_epoch_end= True,
         save_top_k= 1,
     )
@@ -106,8 +106,8 @@ if __name__ == '__main__':
     net = GA(
         tokenizer.vocab_size, 
         tokenizer.bos_token_id, 
-        num_encoder_layers= 3, 
-        num_decoder_layers= 3,
+        num_encoder_layers= 6, 
+        num_decoder_layers= 6,
         d_model= D_MODEL, 
         freeze= True, 
         act= nn.GELU(),
@@ -127,13 +127,13 @@ if __name__ == '__main__':
         accelerator= 'gpu',
         precision= '32',
         # max_time= '00:08:00:00',
-        max_epochs= 30,
+        max_epochs= 40,
         benchmark= True,
         logger= tb_logger,
         log_every_n_steps= 5,
         num_sanity_val_steps= 2,
         check_val_every_n_epoch= 1,
-        callbacks= [lr_monitor, ckpt_cb],
+        callbacks= [lr_monitor, ckpt_cb, es_cb],
         # profiler= profiler,
         gradient_clip_val= 0.5,
         # fast_dev_run= True,

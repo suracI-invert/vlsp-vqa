@@ -81,7 +81,7 @@ if __name__ == '__main__':
     lr_monitor = LearningRateMonitor('step', True)
     ckpt_cb = ModelCheckpoint(
         dirpath= './weights',
-        filename= 'vqa_v2_{epoch:02d}_{step:02d}',
+        filename= 'vqa_v4_{epoch:02d}_{step:02d}',
         monitor= 'val/loss',
         save_on_train_epoch_end= True,
         save_top_k= 1,
@@ -109,7 +109,7 @@ if __name__ == '__main__':
         num_encoder_layers= 6, 
         num_decoder_layers= 6,
         d_model= D_MODEL, 
-        freeze= True, 
+        freeze= False, 
         act= nn.GELU(),
         hidden_dim= 2048,
         dropout_encoder= 0.3
@@ -127,13 +127,13 @@ if __name__ == '__main__':
         accelerator= 'gpu',
         precision= '32',
         # max_time= '00:08:00:00',
-        max_epochs= 40,
+        max_epochs= 30,
         benchmark= True,
         logger= tb_logger,
         log_every_n_steps= 5,
         num_sanity_val_steps= 2,
         check_val_every_n_epoch= 1,
-        callbacks= [lr_monitor, ckpt_cb, es_cb],
+        callbacks= [lr_monitor, ckpt_cb],
         # profiler= profiler,
         gradient_clip_val= 0.5,
         # fast_dev_run= True,

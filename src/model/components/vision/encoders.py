@@ -79,3 +79,7 @@ class EfficientNetEncoder(nn.Module):
         #print(fmap.shape)
 
         return self.proj(fmap)
+    
+    def freeze(self):
+        for param in self.model.parameters():
+            param.requires_grad = False    

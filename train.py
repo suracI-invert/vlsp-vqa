@@ -40,7 +40,7 @@ if __name__ == '__main__':
     set_float32_matmul_precision('medium')
     MAX_LEN = 256
 
-    D_MODEL = 768
+    D_MODEL = 512
     WARMUP_STEPS = 10000
 
     DATA_DIR = './data'
@@ -95,7 +95,7 @@ if __name__ == '__main__':
         'dev-images', 
         'vlsp2023_dev_data.json', 
         transforms= ImageAugmentation(), 
-        batch_size= 16,
+        batch_size= 32,
         max_length= MAX_LEN,
         num_workers= num_workers,
         tokenizer= tokenizer,
@@ -109,7 +109,7 @@ if __name__ == '__main__':
         num_encoder_layers= 6, 
         num_decoder_layers= 6,
         d_model= D_MODEL, 
-        freeze= False, 
+        freeze= True, 
         act= nn.GELU(),
         hidden_dim= 2048,
         dropout_encoder= 0.3

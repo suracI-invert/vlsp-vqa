@@ -88,7 +88,7 @@ class EfficientNetEncoder(nn.Module):
 
 class ImageEncoderRCNN(nn.Module):
     def __init__(self, pretrained_image_name: str = "COCO-Detection/faster_rcnn_R_50_FPN_3x", dim= 768):
-        super(ImageEncoderFasterRCNN, self).__init__()
+        super(ImageEncoderRCNN, self).__init__()
         #model = model_zoo.get("COCO-Detection/faster_rcnn_R_50_FPN_3x")
         self.model = torchvision.models.detection.fasterrcnn_resnet50_fpn(pretrained=True)
         self.model.eval()
@@ -100,13 +100,13 @@ class ImageEncoderRCNN(nn.Module):
         - input: image
         - output shape: (batch_size, feature_map_size, hidden_size) [1, feature_map_size, 768]
         """
-        images = torch.stack(images)
+        #images = torch.stack(images)
         batch_size, c, h, w = images.shape
         #print(images.shape)
 
         x_resized_1 = images.view(batch_size , c, h, w)
         fmap = self.model(x_resized_1)
-        #print(fmap)
+        print(fmap[0]['boxes'])
         feature_list = []
         #print(type(feature_list))
         #print(images[0].shape)
@@ -116,23 +116,24 @@ class ImageEncoderRCNN(nn.Module):
             #feature_maps = fmap[i]['features']
             rois = [roi.unsqueeze(0) for roi in rois]  # RoIs
             
-            # extract feature rois	
+            print(i, rois[0])
+
             image_shapes = [(224,224)]
-            roi_features = self.model.roi_heads.box_roi_pool(self.model.backbone(images[i].unsqueeze(0)), rois, [torch.tensor(image_shapes)])  
+            roi_features = self.model.roi_heads.box_roi_pool(self.model.backbone(images[i].unsqueeze(0)), 
+                                                             rois, [torch.tensor(image_shapes)])  
             #print(roi_features.shape)
         
             batch_size_features, dim, h, w = roi_features.shape
             reshaped_roi_features = roi_features.view(h * w, dim * batch_size_features)
-            #print(reshaped_roi_features.shape)
+            print(reshaped_roi_features.shape)
             
-	    # reshape
             proj = nn.Linear(dim * batch_size_features, 768)
             ln_feature = proj(reshaped_roi_features)
-            #print(type(ln_feature))
+            print((ln_feature))
 
             feature_list.append(ln_feature)     
-            outputs = torch.stack(feature_list)
+            #outputs = torch.stack(feature_list)
             #print(outputs.shape)
             
-        #outputs = torch.stack(feature_list)
+        outputs = torch.stack(feature_list)
         return outputs

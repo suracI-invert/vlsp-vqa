@@ -91,10 +91,10 @@ class EfficientNetEncoder(nn.Module):
             param.requires_grad = False    
 
 class ImageEncoderRCNN(nn.Module):
-    def __init__(self, pretrained_image_name: str = "COCO-Detection/faster_rcnn_R_50_FPN_3x", dim= 768):
+    def __init__(self, pretrained_image_name = torchvision.models.detection.FasterRCNN_ResNet50_FPN_Weights.COCO_V1, dim= 768):
         super(ImageEncoderRCNN, self).__init__()
         #model = model_zoo.get("COCO-Detection/faster_rcnn_R_50_FPN_3x")
-        self.model = torchvision.models.detection.fasterrcnn_resnet50_fpn(pretrained=True)
+        self.model = torchvision.models.detection.fasterrcnn_resnet50_fpn(weights= pretrained_image_name)
         self.model.eval()
         self.avgpool = nn.AdaptiveAvgPool2d(1)
         # self.proj = nn.LazyLinear(dim)
@@ -106,10 +106,12 @@ class ImageEncoderRCNN(nn.Module):
         """
         #images = torch.stack(images)
         batch_size, c, h, w = images.shape
-        #print(images.shape)
+        print(images.shape)
 
-        x_resized_1 = images.view(batch_size , c, h, w)
-        fmap = self.model(x_resized_1)
+        # x_resized_1 = images.view(batch_size , c, h, w)
+        # print(x_resized_1)
+        fmap = self.model(images)
+        # print(fmap)
         print(fmap[0]['boxes'])
         feature_list = []
         #print(type(feature_list))

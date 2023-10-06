@@ -99,7 +99,7 @@ class GA(nn.Module):
         self.d_model = d_model
 
         if freeze:
-            self.image_encoder.freeze()
+            # self.image_encoder.freeze()
             self.text_encoder.freeze()
 
         self.encoder_layers = nn.ModuleList([GuidedAttention(
@@ -199,3 +199,6 @@ class GA(nn.Module):
 
         return output
     
+# TODO: Multiway Transformer
+# TODO: DT-fixup implementation???
+# TODO: add GAT layer for ocr token

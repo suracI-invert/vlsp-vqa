@@ -229,6 +229,36 @@ class ResidualConnection(nn.Module):
             x = self.norm(x + self.dropout(sublayer(x)))
         return x
 
+class TransformerEncoderLayer(nn.Module):
+    def __init__(self, 
+            vocab_size,
+            d_model,
+            nhead,
+            dim_feedforward,
+            num_layers,
+            act, norm_first= False,
+            dropout= 0.1
+        ):
+        super().__init__()
+
+        self.d_model = d_model
+        encoder_layer = nn.TransformerEncoderLayer(
+            d_model,
+            nhead,
+            dim_feedforward,
+            dropout,
+            act(),
+            norm_first
+        )
+
+        self.transformer_encoder = nn.TransformerEncoder(
+            encoder_layer,
+            num_layers,
+        )
+    
+    def forward(self, x, mask):
+        x = self.transformer_encoder(x, src_key_padding_mask= mask)
+        return x
 
 class TransformerDecoderLayer(nn.Module):
     def __init__(self,
@@ -366,4 +396,40 @@ class GuidedAttention(nn.Module):
 
         return ((img, text))
     
-# class Compound(nn.Module):
+class Compound(nn.Module):
+    def __init__(self, dim, nhead, hidden_dim, act, dropout, norm_first):
+        super().__init__()
+
+        self.img_cross_attn = nn.MultiheadAttention(
+            embed_dim= dim,
+            num_heads= nhead,
+            dropout= dropout
+        )
+        self.img_cross_attn_res = ResidualConnection(dim, dropout, norm_first)
+
+        self.img_fnn = nn.Sequential(
+            nn.Linear(dim, hidden_dim),
+            act(),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_dim, dim)
+        )
+        self.img_fnn_res = ResidualConnection(dim, dropout)
+
+        self.text_cross_attn = nn.MultiheadAttention(
+            embed_dim= dim,
+            num_heads= nhead,
+            dropout= dropout
+        )   
+        self.text_cross_attn_res = ResidualConnection(dim, dropout, norm_first)
+        self.text_fnn = nn.Sequential(
+            nn.Linear(dim, hidden_dim),
+            act(),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_dim, dim)
+        )
+
+    def forward(self, text, img, text_attn):
+        """
+            input should have dim/2 for concatenation
+        """
+        text_feature = self.text_cross_attn_res(text, lambda text: self.text_cross_attn(text, img, img))

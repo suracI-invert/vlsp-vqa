@@ -83,7 +83,7 @@ if __name__ == '__main__':
     ckpt_cb = ModelCheckpoint(
         dirpath= './weights',
         filename= 'vqa_v1_{epoch:02d}_{step:02d}',
-        monitor= 'val/cider',
+        monitor= 'val/loss',
         save_on_train_epoch_end= True,
         save_top_k= 1,
     )
@@ -95,7 +95,7 @@ if __name__ == '__main__':
         'vlsp2023_train_data.json', 
         'dev-images', 
         'vlsp2023_dev_data.json', 
-        transforms= ImageAugmentation(), 
+        transforms= ImageAugmentationCNNStripped(), 
         batch_size= 32,
         max_length= MAX_LEN,
         num_workers= num_workers,

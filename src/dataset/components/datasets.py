@@ -3,6 +3,7 @@ from PIL import Image
 from os.path import join
 from json import load
 from torchvision.transforms.functional import pil_to_tensor
+from src.model.components.ocr import text_tokens
 
 import torch
 
@@ -48,6 +49,8 @@ class VQADataset(Dataset):
             img = img.resize((32, 32))
             img = pil_to_tensor(img)
         
+        # ocr_tokens = text_tokens(join(self.root_dir, self.data_dir, img_path))
+        
         # TODO: Move to another seperate func
         if self.tokenizer:
             # bos_token_id = torch.tensor([self.tokenizer.pad_token_id]) # Hacky way using pad instead of bos for ViT5 TODO: fix this
@@ -67,9 +70,8 @@ class VQADataset(Dataset):
             'img_fname': img_path,
             'img': img,
             'question': question,
-            'tokenized_question': question_tokenized,
             'answer': answer,
-            'tokenized_answer': answer_tokenized,
+            # 'ocr': ocr_tokens
         }
         
 

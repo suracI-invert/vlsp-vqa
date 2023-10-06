@@ -1,5 +1,5 @@
-from torch import nn, cat, no_grad, tensor, rand, ones
-from src.model.components.vision.encoders import EfficientNetEncoder, ImageEncoderViT
+from torch import nn, cat, no_grad, tensor, rand, ones, uint8
+from src.model.components.vision.encoders import EfficientNetEncoder, ImageEncoderViT, ImageEncoderRCNN
 from src.model.components.language.encoders import ViT5Encoder, BARTphoEncoder
 from src.model.components.transformer import MultiwayTransformer
 from src.model.components.pooler import Pooler
@@ -15,7 +15,7 @@ class VLMo(nn.Module):
     def __init__(self, vocab_size, max_text_len, freeze= True):
         super().__init__()
 
-        self.image_encoder = ImageEncoderViT()
+        self.image_encoder = ImageEncoderRCNN()
         self.text_encoder = BARTphoEncoder()
         if freeze:
             self.image_encoder.freeze()
@@ -84,11 +84,12 @@ class GA(nn.Module):
                  d_model= 768, nheads_encoder= 8, 
                  nheads_decoder= 8, num_encoder_layers= 6, 
                  num_decoder_layers= 6, hidden_dim= 2048, 
-                 dropout_encoder= 0.2, dropout_decoder= 0.2, act= nn.ReLU(), norm_first= False, freeze= True, return_loss= True
+                 dropout_encoder= 0.2, dropout_decoder= 0.2, act= nn.ReLU, norm_first= False, freeze= True, return_loss= True
                 ):
         super().__init__()
 
-        self.image_encoder = ImageEncoderViT(dim= d_model)
+        # self.image_encoder = ImageEncoderViT(dim= d_model)
+        self.image_encoder= ImageEncoderRCNN(dim= d_model)
         # self.image_encoder = EfficientNetEncoder(dim= d_model)
         # self.text_encoder = ViT5Encoder() # TODO: logic to change between diffenrent encoder
         self.text_encoder = BARTphoEncoder(hidden_dim= d_model)
@@ -156,7 +157,6 @@ class GA(nn.Module):
 
         # decoder_output = self.decoder(src, tgt['input_ids'], tgt['attention_mask'])
         # decoder_output = self.classifier(decoder_output)
-
         decoder_output = self.decoder_forward(src, tgt['input_ids'], mask, tgt['attention_mask'])
 
         if self.return_loss:
@@ -172,20 +172,22 @@ class GA(nn.Module):
         """
             - Output: src(seq_len, batch_size, d_model) mask(batch_size, seq_len)
         """
-        text_attn_mask = (text['attention_mask'] == 0)
+        text_attn_mask = text['attention_mask']
         text_feature = self.text_encoder(text)
         img_feature = self.image_encoder(img)
+        img_attn_mask = ones(size= (text_attn_mask.shape[0], img_feature.shape[1]), dtype= uint8).to(text_attn_mask.device)
+
         text_attn_mask = text_attn_mask.to(text_feature.device)
         img_feature = img_feature.permute(1, 0, 2) 
         text_feature = text_feature.permute(1, 0, 2)
         for l in self.encoder_layers:
-            img_feature, text_feature = l(img_feature, text_feature, text_attn_mask)
+            img_feature, text_feature = l(img_feature, text_feature, (text_attn_mask == 0))
         src = cat([img_feature, text_feature], dim= 0)
-        img_attn_mask = ones(size= (text_attn_mask.shape[0], img_feature.shape[0])).to(text_attn_mask.device) == 0
+        
         src_attn_mask = cat([img_attn_mask, text_attn_mask], dim= -1)
         src = self.encoder_fnn(self.encoder_fnn_drop(src))
 
-        return self.encoder_fnn_norm(src), src_attn_mask
+        return self.encoder_fnn_norm(src), (src_attn_mask == 0)
 
     def decoder_forward(self, src, tgt, src_attn_mask= None, tgt_attn_mask= None):
         """
@@ -193,5 +195,7 @@ class GA(nn.Module):
         tgt: input (shifted right with bos_token) (T, B, D)
         """
         output = self.classifier(self.decoder(src, tgt, src_attn_mask, tgt_attn_mask))
+
+
         return output
     

@@ -43,6 +43,7 @@ class BARTphoEncoder(Module):
     BARTpho Encoder for question
         - pretrained: name of pretrained weights
     """
+    # TODO: seperate decoder and encoder
     def __init__(
         self,
         pretrained = 'vinai/bartpho-syllable-base', # Can change to word or syllable
@@ -88,8 +89,8 @@ class BARTphoEncoder(Module):
 
         # Return 4 layers of encoder concatinated for better performance
         # See: https://www.kaggle.com/code/rhtsingh/utilizing-transformer-representations-efficiently
-        outputs = self.model(input['input_ids'], input['attention_mask'], output_hidden_states= True, return_dict= True)
-        all_hidden_states = outputs.encoder_hidden_states
+        outputs = self.model.get_encoder()(input['input_ids'], input['attention_mask'], output_hidden_states= True, return_dict= True)
+        all_hidden_states = outputs.hidden_states
 
         concatenate_pooling = torch.cat(
             (all_hidden_states[-1], all_hidden_states[-2], all_hidden_states[-3], all_hidden_states[-4]), -1

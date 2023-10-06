@@ -27,6 +27,8 @@ class VQALitModule(LightningModule):
                 scheduler_params: Dict[str, Any] = {},
                 max_len: int = 64,
                 learning_rate: float = 0.001,
+                interval: str = 'step',
+                frequency: int = 1
             ):
         """
         wow
@@ -150,8 +152,8 @@ class VQALitModule(LightningModule):
                 'optimizer': optimizer,
                 'lr_scheduler': {
                     'scheduler': scheduler,
-                    'interval': 'step',
-                    'frequency': 1
+                    'interval': self.hparams.interval,
+                    'frequency': self.hparams.frequency
                 }
             }
         return {'optimizer': optimizer}

@@ -251,7 +251,7 @@ class TransformerDecoderLayer(nn.Module):
         decoder_layer = nn.TransformerDecoderLayer(
             d_model = d_model,
             nhead = nhead,
-            activation= act,
+            activation= act(),
             dim_feedforward = dim_feedforward,
             norm_first= norm_first,
             dropout= dropout
@@ -330,7 +330,7 @@ class GuidedAttention(nn.Module):
 
         self.img_ffn = nn.Sequential(
             nn.Linear(dim, hidden_dim),
-            act,
+            act(),
             nn.Dropout(dropout),
             nn.Linear(hidden_dim, dim),
         )
@@ -340,7 +340,7 @@ class GuidedAttention(nn.Module):
 
         self.text_ffn = nn.Sequential(
             nn.Linear(dim, hidden_dim),
-            act,
+            act(),
             nn.Dropout(dropout),
             nn.Linear(hidden_dim, dim),
         )
@@ -365,3 +365,5 @@ class GuidedAttention(nn.Module):
         img = self.img_ffn_res(ga, lambda ga: self.img_ffn(ga))
 
         return ((img, text))
+    
+# class Compound(nn.Module):

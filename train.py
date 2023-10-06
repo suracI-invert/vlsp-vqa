@@ -4,7 +4,7 @@ from src.model.lit import VQALitModule
 from src.model.model import VLMo, Baseline, GA
 from src.model.components.vision.encoders import ImageProcessorViT
 from src.dataset.datamodule import VQADataModule
-from src.dataset.components.DataAugmentation import ImageAugmentation, ImageAugmentationCNN
+from src.dataset.components.DataAugmentation import ImageAugmentation, ImageAugmentationCNN, ImageAugmentationCNNStripped, ImageAugmentationStripped
 from src.dataset.components.collator import Collator
 
 from src.utils.tokenizer import get_tokenizer
@@ -41,7 +41,7 @@ if __name__ == '__main__':
     MAX_LEN = 256
 
     D_MODEL = 512
-    WARMUP_STEPS = 10000
+    WARMUP_STEPS = 8000
 
     DATA_DIR = './data'
     if args.dir is None:
@@ -73,7 +73,8 @@ if __name__ == '__main__':
         'warmup_steps': WARMUP_STEPS,
     }
     # scheduler_params = {
-    #     'gamma': 0.5
+    #     'T_max': 20,
+    #     'eta_min': 1e-5,
     # }
 
 
@@ -81,8 +82,8 @@ if __name__ == '__main__':
     lr_monitor = LearningRateMonitor('step', True)
     ckpt_cb = ModelCheckpoint(
         dirpath= './weights',
-        filename= 'vqa_v4_{epoch:02d}_{step:02d}',
-        monitor= 'val/loss',
+        filename= 'vqa_v1_{epoch:02d}_{step:02d}',
+        monitor= 'val/cider',
         save_on_train_epoch_end= True,
         save_top_k= 1,
     )
@@ -106,17 +107,20 @@ if __name__ == '__main__':
     net = GA(
         tokenizer.vocab_size, 
         tokenizer.bos_token_id, 
-        num_encoder_layers= 6, 
-        num_decoder_layers= 6,
+        num_encoder_layers= 3, 
+        num_decoder_layers= 3,
         d_model= D_MODEL, 
         freeze= True, 
-        act= nn.GELU(),
+        act= nn.GELU,
         hidden_dim= 2048,
         dropout_encoder= 0.3
     )
 
     model = VQALitModule(
-        net, tokenizer, torch.optim.RAdam, WarmupScheduler, scheduler_params= scheduler_params, learning_rate= 1e-9
+        net, tokenizer, 
+        torch.optim.RAdam, WarmupScheduler, 
+        scheduler_params= scheduler_params, learning_rate= 1e-9,
+        interval= 'step'
     )
 
     tb_logger = loggers.TensorBoardLogger(

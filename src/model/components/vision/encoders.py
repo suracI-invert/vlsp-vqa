@@ -97,14 +97,14 @@ class ImageEncoderRCNN(nn.Module):
         self.model = torchvision.models.detection.fasterrcnn_resnet50_fpn(pretrained=True)
         self.model.eval()
         self.avgpool = nn.AdaptiveAvgPool2d(1)
-        #self.proj = nn.Linear(1280, dim)
+        # self.proj = nn.LazyLinear(dim)
     
     def forward(self, images):
         """
         - input: image
         - output shape: (batch_size, feature_map_size, hidden_size) [1, feature_map_size, 768]
         """
-        images = torch.stack(images)
+        # images = torch.stack(images)
         batch_size, c, h, w = images.shape
         #print(images.shape)
 
@@ -119,7 +119,7 @@ class ImageEncoderRCNN(nn.Module):
             rois = fmap[i]['boxes']
             #feature_maps = fmap[i]['features']
             rois = [roi.unsqueeze(0) for roi in rois]  # RoIs
-            
+            print(images[i].shape)
             # extract feature rois	
             image_shapes = [(224,224)]
             roi_features = self.model.roi_heads.box_roi_pool(self.model.backbone(images[i].unsqueeze(0)), rois, [torch.tensor(image_shapes)])  
@@ -140,3 +140,7 @@ class ImageEncoderRCNN(nn.Module):
             
         #outputs = torch.stack(feature_list)
         return outputs
+    
+    def freeze(self):
+        for param in self.model.parameters():
+            param.requires_grad = False   

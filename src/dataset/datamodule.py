@@ -111,6 +111,7 @@ class VQADataModule(LightningDataModule):
             dataset= self.data_test,
             batch_size= self.hparams.batch_size,
             num_workers= self.hparams.num_workers,
+            collate_fn= self.hparams.collate_fn,
             pin_memory= self.hparams.pin_memory,
             shuffle= False
         )

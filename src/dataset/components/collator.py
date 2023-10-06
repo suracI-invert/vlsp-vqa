@@ -9,11 +9,13 @@ class Collator(object):
         self.tokenizer = tokenizer
 
     def __call__(self, batch) -> Any:
+        fname = []
         img = []
         questions = []
         answers = []
         pad_token_id = torch.tensor(self.tokenizer.pad_token_id)
         for sample in batch:
+            fname.append(sample['img_fname'])
             img.append(sample['img'])
             questions.append(sample['question'])
             answers.append(sample['answer'])
@@ -27,6 +29,7 @@ class Collator(object):
         tgt['input_ids'] = tgt['input_ids'][:, :-1]
         tgt['attention_mask'] = (tgt['input_ids'] == self.tokenizer.pad_token_id)
         return {
+            'fname': fname,
             'img': torch.stack(img),
             'src': src,
             'tgt': tgt,

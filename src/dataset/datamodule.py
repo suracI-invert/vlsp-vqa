@@ -46,19 +46,18 @@ class VQADataModule(LightningDataModule):
 
     def prepare_data(self) -> None:
         url = 'https://drive.google.com/drive/folders/1zNzpR8XCVwweRGExnjotwrJuCnhxfiTO'
-        output = os.getcwd()
-        if os.path.exists(os.path.join(output, 'data')):
-            if os.listdir(os.path.join(output, 'data')):
+        if os.path.exists(self.hparams.root_dir):
+            if os.listdir(self.hparams.root_dir):
                 return
         else:
-            os.makedirs(os.path.join(output, 'data'))
-        gdown.download_folder(url, output= os.path.join(output, 'data'), quiet= False, use_cookies= False)
-        with zipfile.ZipFile(os.path.join(output, 'data/training-images.zip'), 'r') as zip_ref:
-            zip_ref.extractall(os.path.join(output, 'data'))
-        with zipfile.ZipFile(os.path.join(output, 'data/dev-images.zip'), 'r') as zip_ref:
-            zip_ref.extractall(os.path.join(output, 'data'))
-        os.remove(os.path.join(output, 'data/training-images.zip'))
-        os.remove(os.path.join(output, 'data/dev-images.zip'))
+            os.makedirs(self.hparams.root_dir)
+        gdown.download_folder(url, output= self.hparams.root_dir, quiet= False, use_cookies= False)
+        with zipfile.ZipFile(os.path.join(self.hparams.root_dir, 'training-images.zip'), 'r') as zip_ref:
+            zip_ref.extractall(self.hparams.root_dir)
+        with zipfile.ZipFile(os.path.join(self.hparams.root_dir, 'dev-images.zip'), 'r') as zip_ref:
+            zip_ref.extractall(self.hparams.root_dir)
+        os.remove(os.path.join(self.hparams.root_dir, 'training-images.zip'))
+        os.remove(os.path.join(self.hparams.root_dir, 'dev-images.zip'))
 
     def setup(self, stage: Optional[str] = None) -> None:
 

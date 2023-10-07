@@ -453,6 +453,6 @@ class GAT(nn.Module):
         x = x.ReLU()
         x = self.conv3(x, edge_index)
 
-        x = global_mean_pool(x, batch)  # [batch_size, hidden_channels]
+        x = global_mean_pool(x, batch)  # [batch_size, hidden_channels]??
 
         return x

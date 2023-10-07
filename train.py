@@ -77,7 +77,7 @@ if __name__ == '__main__':
     #     'eta_min': 1e-5,
     # }
 
-    es_cb = EarlyStopping('val/loss', min_delta= 0.0000001, patience= 3)
+    es_cb = EarlyStopping('val/loss', min_delta= 0.00001, patience= 5)
     lr_monitor = LearningRateMonitor('step', True)
     ckpt_cb = ModelCheckpoint(
         dirpath= './weights',
@@ -130,13 +130,13 @@ if __name__ == '__main__':
         accelerator= 'gpu',
         precision= '32',
         # max_time= '00:08:00:00',
-        max_epochs= 30,
+        max_epochs= 50,
         benchmark= True,
         logger= tb_logger,
         log_every_n_steps= 5,
         num_sanity_val_steps= 2,
         check_val_every_n_epoch= 1,
-        callbacks= [lr_monitor, ckpt_cb],
+        callbacks= [lr_monitor, ckpt_cb, es_cb],
         # profiler= profiler,
         gradient_clip_val= 0.5,
         # fast_dev_run= True,

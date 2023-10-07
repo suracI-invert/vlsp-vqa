@@ -7,6 +7,9 @@ from torch.nn import functional as F
 import numpy as np
 import math
 
+from torch_geometric.nn import GCNConv, GATConv
+from torch_geometric.nn import global_mean_pool
+
 class DropPath(nn.Module):
     """
     Drop paths (Stochastic Depth) per sample  (when applied in main path of residual blocks).
@@ -433,3 +436,23 @@ class Compound(nn.Module):
             input should have dim/2 for concatenation
         """
         text_feature = self.text_cross_attn_res(text, lambda text: self.text_cross_attn(text, img, img))
+
+class GAT(nn.Module):
+    def __init__(self, vocab_size, d_model, hidden_channels, dropout= 0.2):
+        super().__init__()
+        self.emb = nn.Embedding(vocab_size, d_model)
+        self.conv1 = GATConv(d_model, hidden_channels, dropout= dropout)
+        self.conv2 = GATConv(hidden_channels, hidden_channels, dropout= dropout)
+        self.conv3 = GATConv(hidden_channels, hidden_channels, dropout= dropout)
+
+    def foward(self, node_ids, edge_index, batch):
+        x = self.emb(node_ids)
+        x = self.conv1(x, edge_index)
+        x = x.ReLU()
+        x = self.conv2(x, edge_index)
+        x = x.ReLU()
+        x = self.conv3(x, edge_index)
+
+        x = global_mean_pool(x, batch)  # [batch_size, hidden_channels]
+
+        return x

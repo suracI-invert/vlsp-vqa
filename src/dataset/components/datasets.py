@@ -3,7 +3,7 @@ from PIL import Image
 from os.path import join
 from json import load
 from torchvision.transforms.functional import pil_to_tensor
-from src.model.components.ocr import text_tokens
+from src.model.components.ocr import OCR
 
 import torch
 
@@ -19,14 +19,13 @@ class VQADataset(Dataset):
         self.tokenizer = tokenizer
         self.processor = processor
         self.max_length = max_length
+        # self.ocr_predictor = OCR()
 
         with open(join(self.root_dir, self.map_file), 'r', encoding= 'utf8') as f:
             data = load(f)
 
             self.images = data['images']
             self.annotations= list(data['annotations'].values())
-        
-        
 
     def __len__(self):
         return len(self.annotations)
@@ -49,7 +48,8 @@ class VQADataset(Dataset):
             img = img.resize((32, 32))
             img = pil_to_tensor(img)
         
-        # ocr_tokens = text_tokens(join(self.root_dir, self.data_dir, img_path))
+        # TODO: seperate vietocr and easyocr for initialization
+        # ocr_tokens = self.ocr_predictor(join(self.root_dir, self.data_dir, img_path))
         
         # TODO: Move to another seperate func
         if self.tokenizer:
@@ -73,6 +73,5 @@ class VQADataset(Dataset):
             'answer': answer,
             # 'ocr': ocr_tokens
         }
-        
-
+    
         

@@ -84,12 +84,12 @@ class GA(nn.Module):
                  d_model= 768, nheads_encoder= 8, 
                  nheads_decoder= 8, num_encoder_layers= 6, 
                  num_decoder_layers= 6, hidden_dim= 2048, 
-                 dropout_encoder= 0.2, dropout_decoder= 0.2, act= nn.ReLU, norm_first= False, freeze= True, return_loss= True
+                 dropout_encoder= 0.2, dropout_decoder= 0.2, act= nn.ReLU, norm_first= False, freeze= None, return_loss= True
                 ):
         super().__init__()
 
-        # self.image_encoder = ImageEncoderViT(dim= d_model)
-        self.image_encoder= ImageEncoderRCNN(dim= d_model)
+        self.image_encoder = ImageEncoderViT(dim= d_model)
+        # self.image_encoder= ImageEncoderRCNN(dim= d_model)
         # self.image_encoder = EfficientNetEncoder(dim= d_model)
         # self.text_encoder = ViT5Encoder() # TODO: logic to change between diffenrent encoder
         self.text_encoder = BARTphoEncoder(hidden_dim= d_model)
@@ -98,8 +98,12 @@ class GA(nn.Module):
 
         self.d_model = d_model
 
-        if freeze:
-            # self.image_encoder.freeze()
+        if freeze == 'both':
+            self.image_encoder.freeze()
+            self.text_encoder.freeze()
+        elif freeze == 'img':
+            self.image_encoder.freeze()
+        elif freeze == 'text':
             self.text_encoder.freeze()
 
         self.encoder_layers = nn.ModuleList([GuidedAttention(

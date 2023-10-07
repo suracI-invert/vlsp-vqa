@@ -77,13 +77,12 @@ if __name__ == '__main__':
     #     'eta_min': 1e-5,
     # }
 
-
     es_cb = EarlyStopping('val/loss', min_delta= 0.0000001, patience= 3)
     lr_monitor = LearningRateMonitor('step', True)
     ckpt_cb = ModelCheckpoint(
         dirpath= './weights',
-        filename= 'vqa_v1_{epoch:02d}_{step:02d}',
-        monitor= 'val/loss',
+        filename= 'vqa_vit_512_6_{epoch:02d}_{step:02d}_cider',
+        monitor= 'val/cider',
         save_on_train_epoch_end= True,
         save_top_k= 1,
     )
@@ -95,7 +94,7 @@ if __name__ == '__main__':
         'vlsp2023_train_data.json', 
         'dev-images', 
         'vlsp2023_dev_data.json', 
-        transforms= ImageAugmentationCNNStripped(), 
+        transforms= ImageAugmentation(), 
         batch_size= 32,
         max_length= MAX_LEN,
         num_workers= num_workers,
@@ -107,10 +106,10 @@ if __name__ == '__main__':
     net = GA(
         tokenizer.vocab_size, 
         tokenizer.bos_token_id, 
-        num_encoder_layers= 3, 
-        num_decoder_layers= 3,
+        num_encoder_layers= 6, 
+        num_decoder_layers= 6,
         d_model= D_MODEL, 
-        freeze= True, 
+        freeze= 'text', 
         act= nn.GELU,
         hidden_dim= 2048,
         dropout_encoder= 0.3

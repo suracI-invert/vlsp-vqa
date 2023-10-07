@@ -62,12 +62,12 @@ class ImageEncoderViT(nn.Module):
 
 
 class EfficientNetEncoder(nn.Module):
-    def __init__(self, pretrained_image_name: str = "efficientnet_b0", dim= 768):
+    def __init__(self, pretrained_image_name: str = "efficientnet_b4", dim= 768):
         super(EfficientNetEncoder, self).__init__()
         model = timm.create_model(pretrained_image_name, pretrained=True)
         self.model = nn.Sequential(*list(model.children())[:-2])
         self.avgpool = nn.AdaptiveAvgPool2d(1)
-        self.proj = nn.Linear(1280, dim)
+        self.proj = nn.Linear(1792, dim)
     
     def forward(self, images):
         """
@@ -82,19 +82,19 @@ class EfficientNetEncoder(nn.Module):
         
         batch_size, dim, h, w = fmap.shape
         fmap = fmap.view(batch_size, h * w, dim)
-        #print(fmap.shape)
+        # print(fmap.shape)
 
         return self.proj(fmap)
     
     def freeze(self):
         for param in self.model.parameters():
-            param.requires_grad = False    
+            param.requires_grad = False   
 
 class ImageEncoderRCNN(nn.Module):
     def __init__(self, pretrained_image_name = torchvision.models.detection.FasterRCNN_ResNet50_FPN_Weights.COCO_V1, dim= 768):
-        super(ImageEncoderRCNN, self).__init__()
+        super().__init__()
         #model = model_zoo.get("COCO-Detection/faster_rcnn_R_50_FPN_3x")
-        self.model = torchvision.models.detection.fasterrcnn_resnet50_fpn(weights= pretrained_image_name)
+        self.model = torchvision.models.detection.fasterrcnn_resnet50_fpn(pretrained=True)
         self.model.eval()
         self.avgpool = nn.AdaptiveAvgPool2d(1)
         # self.proj = nn.LazyLinear(dim)
@@ -105,24 +105,24 @@ class ImageEncoderRCNN(nn.Module):
         - output shape: (batch_size, feature_map_size, hidden_size) [1, feature_map_size, 768]
         """
         #images = torch.stack(images)
-        batch_size, c, h, w = images.shape
-        print(images.shape)
+        # batch_size, c, h, w = images.shape
+        # print(1)
+        # print(images.shape)
 
         # x_resized_1 = images.view(batch_size , c, h, w)
         # print(x_resized_1)
         fmap = self.model(images)
-        # print(fmap)
-        print(fmap[0]['boxes'])
+        #print(fmap[0]['boxes'])
         feature_list = []
         #print(type(feature_list))
         #print(images[0].shape)
-        for i in range(batch_size):
+        for i in range(images.shape[0]):
             #print(type(feature_list))
             rois = fmap[i]['boxes']
             #feature_maps = fmap[i]['features']
             rois = [roi.unsqueeze(0) for roi in rois]  # RoIs
             
-            print(i, rois[0])
+            # print(i, rois[0])
 
             image_shapes = [(224,224)]
             roi_features = self.model.roi_heads.box_roi_pool(self.model.backbone(images[i].unsqueeze(0)), 
@@ -131,11 +131,11 @@ class ImageEncoderRCNN(nn.Module):
         
             batch_size_features, dim, h, w = roi_features.shape
             reshaped_roi_features = roi_features.view(h * w, dim * batch_size_features)
-            print(reshaped_roi_features.shape)
+            # print(reshaped_roi_features.shape)
             
             proj = nn.Linear(dim * batch_size_features, 768)
             ln_feature = proj(reshaped_roi_features)
-            print((ln_feature))
+            # print((ln_feature))
 
             feature_list.append(ln_feature)     
             #outputs = torch.stack(feature_list)

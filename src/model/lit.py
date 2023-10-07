@@ -37,9 +37,7 @@ class VQALitModule(LightningModule):
         self.save_hyperparameters(logger= False, ignore= ['net', 'tokenizer'])
 
         self.net = net
-        for p in self.net.parameters():
-            if p.dim() > 1 and p.requires_grad:
-                nn.init.xavier_uniform_(p)
+
         self.tokenizer = tokenizer
     
 

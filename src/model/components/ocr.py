@@ -22,6 +22,8 @@ class OCR(object):
     
     def __call__(self, image_path):
         img = cv2.imread(image_path)
+        # if img is None:
+        #     print(image_path)
         #plt.imshow(img)
         
         # boost contrast
@@ -50,25 +52,30 @@ class OCR(object):
 
         threshold = 0.01
 
+        def convert_uint(i):
+            if i < 0:
+                return 0
+            return int(i)
+        # print(len(sorted_text_boxes))
         token_list = []
         for text_box in sorted_text_boxes:
             bbox, _, score = text_box
-
             if len(bbox) >= 4 and score > threshold:
-                pt1 = (int(bbox[0][0]), int(bbox[0][1]))
-                pt2 = (int(bbox[2][0]), int(bbox[2][1]))
-
+                pt1 = (convert_uint(bbox[0][0]), convert_uint(bbox[0][1]))
+                pt2 = (convert_uint(bbox[2][0]), convert_uint(bbox[2][1]))
+                # print(img[pt1[1]:pt2[1], pt1[0]:pt2[0]])
                 cropped_image = img[pt1[1]:pt2[1], pt1[0]:pt2[0]]
-
-                if len(cropped_image) == 0:
+                # print(len(cropped_image))
+                # print(len(cropped_image[12]))
+                if len(cropped_image) == 0 or cropped_image.shape[0] == 0 or cropped_image.shape[1] == 0:
                     continue
 
                 ## pytereesact
                 #text = pytesseract_ocr(cropped_image)
                 #print(text)
-
                 ## vietocr
-                image_pil = Image.fromarray(cv2.cvtColor(cropped_image, cv2.COLOR_BGR2RGB))
+                im = cv2.cvtColor(cropped_image, cv2.COLOR_BGR2RGB)
+                image_pil = Image.fromarray(im)
                 image_pil = ImageOps.grayscale(image_pil)
                 s = self.ocr_detector.predict(image_pil)
                 token_list.append(s)

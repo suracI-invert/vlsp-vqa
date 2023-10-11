@@ -1,7 +1,8 @@
 import argparse
+import json
 
-from src.model.lit import VQALitModule
-from src.model.model import VLMo, Baseline, GA
+from src.model.lit import VQALitModule, VQAv2LitModule
+from src.model.model import CompoundToken, CompoundTokenOCR, GAv2, GAvOCR, VLMo, Baseline, GA
 from src.model.components.vision.encoders import ImageProcessorViT
 from src.dataset.datamodule import VQADataModule
 from src.dataset.components.DataAugmentation import ImageAugmentation, ImageAugmentationCNN, ImageAugmentationCNNStripped, ImageAugmentationStripped
@@ -77,11 +78,11 @@ if __name__ == '__main__':
     #     'eta_min': 1e-5,
     # }
 
-    es_cb = EarlyStopping('val/loss', min_delta= 0.00001, patience= 5)
+    es_cb = EarlyStopping('val/loss', min_delta= 0.00001, patience= 10)
     lr_monitor = LearningRateMonitor('step', True)
     ckpt_cb = ModelCheckpoint(
         dirpath= './weights',
-        filename= 'vqa_vit_512_6_{epoch:02d}_{step:02d}_cider',
+        filename= 'vqa_final_compound_{epoch:02d}_{step:02d}_cider',
         monitor= 'val/cider',
         save_on_train_epoch_end= True,
         save_top_k= 1,
@@ -89,12 +90,14 @@ if __name__ == '__main__':
     profiler = AdvancedProfiler('./log/profiler', filename= 'perf_logs')
 
     dm = VQADataModule(
-        DATA_DIR, 
-        'training-images', 
-        'vlsp2023_train_data.json', 
-        'dev-images', 
-        'vlsp2023_dev_data.json', 
-        transforms= ImageAugmentation(), 
+        root_dir= DATA_DIR,  
+        data_dir= 'training-images', 
+        map_file= 'train_data_ocr.json', 
+        val_dir= 'dev-images', 
+        val_map_file= 'dev_data_ocr.json', 
+        test_dir= 'test-images',
+        test_map_file= 'test_data_ocr.json',
+        transforms= ImageAugmentationCNN(), 
         batch_size= 32,
         max_length= MAX_LEN,
         num_workers= num_workers,
@@ -103,17 +106,51 @@ if __name__ == '__main__':
         # processor= ImageProcessorViT()
     )
     dm.setup()
+    # net = CompoundToken(
+    #     tokenizer.vocab_size, 
+    #     tokenizer.pad_token_id, 
+    #     num_encoder_layers= 3, 
+    #     num_decoder_layers= 3,
+    #     d_model= D_MODEL, 
+    #     freeze= 'both', 
+    #     act= nn.GELU,
+    #     hidden_dim= 2048,
+    #     dropout_encoder= 0.5
+    # )
     net = GA(
         tokenizer.vocab_size, 
-        tokenizer.bos_token_id, 
-        num_encoder_layers= 6, 
-        num_decoder_layers= 6,
+        tokenizer.pad_token_id, 
+        num_encoder_layers= 3, 
+        num_decoder_layers= 3,
         d_model= D_MODEL, 
-        freeze= 'text', 
+        freeze= 'both', 
         act= nn.GELU,
         hidden_dim= 2048,
-        dropout_encoder= 0.3
+        dropout_encoder= 0.5,
+        dropout_decoder= 0.5
     )
+    # net = GAv2(
+    #     tokenizer.vocab_size, 
+    #     tokenizer.pad_token_id, 
+    #     num_encoder_layers= 3, 
+    #     num_decoder_layers= 3,
+    #     d_model= D_MODEL, 
+    #     freeze= 'text', 
+    #     act= nn.GELU,
+    #     hidden_dim= 2048,
+    #     dropout_encoder= 0.3
+    # )
+    # net = GAvOCR(
+    #     tokenizer.vocab_size, 
+    #     tokenizer.pad_token_id, 
+    #     num_encoder_layers= 3, 
+    #     num_decoder_layers= 3,
+    #     d_model= 768, 
+    #     freeze= 'text', 
+    #     act= nn.GELU,
+    #     hidden_dim= 2048,
+    #     dropout_encoder= 0.3  
+    # )
 
     model = VQALitModule(
         net, tokenizer, 
@@ -122,6 +159,13 @@ if __name__ == '__main__':
         interval= 'step'
     )
 
+    # model = VQAv2LitModule(
+    #     net, tokenizer, 
+    #     torch.optim.RAdam, WarmupScheduler, 
+    #     scheduler_params= scheduler_params, learning_rate= 1e-9,
+    #     interval= 'step'
+    # )
+
     tb_logger = loggers.TensorBoardLogger(
         save_dir= './log',
     )
@@ -129,8 +173,8 @@ if __name__ == '__main__':
     trainer = Trainer(
         accelerator= 'gpu',
         precision= '32',
-        # max_time= '00:08:00:00',
-        max_epochs= 50,
+        max_time= '00:14:00:00',
+        max_epochs= 30,
         benchmark= True,
         logger= tb_logger,
         log_every_n_steps= 5,
@@ -139,10 +183,36 @@ if __name__ == '__main__':
         callbacks= [lr_monitor, ckpt_cb, es_cb],
         # profiler= profiler,
         gradient_clip_val= 0.5,
-        # fast_dev_run= True,
         # limit_train_batches= 0.1,
         # limit_val_batches= 0.1,
-        # detect_anomaly= True
+        # detect_anomaly= True,
+        # fast_dev_run= True
     )
 
     trainer.fit(model, datamodule= dm)
+
+    print('Start predicting public')
+
+    res = trainer.predict(dataloaders= dm.val_dataloader(), ckpt_path= 'best')
+
+    predictions = {}
+    for d in res:
+        for i, v in d.items():
+            predictions[i] = v
+
+    with open('./data/public_results.json', 'w', encoding= 'utf8') as f:
+        json.dump(predictions, f, indent= 4)
+    print('Done')
+
+    print('Start predicting private')
+
+    res = trainer.predict(dataloaders= dm.test_dataloader(), ckpt_path= 'best')
+
+    predictions = {}
+    for d in res:
+        for i, v in d.items():
+            predictions[i] = v
+
+    with open('./data/private_results.json', 'w', encoding= 'utf8') as f:
+        json.dump(predictions, f, indent= 4)
+    print('Done')

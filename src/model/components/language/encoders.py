@@ -58,7 +58,7 @@ class BARTphoEncoder(Module):
             nn.LayerNorm(hidden_dim),
         )
 
-        for p in self.model.decoder.parameters():
+        for p in self.model.get_decoder().parameters():
             p.requires_grad = False
 
     def forward(self, input):
@@ -70,7 +70,6 @@ class BARTphoEncoder(Module):
         # input.pop('token_type_ids', None)
 
         # ------------------------------------------------------------------------------------
-        # TODO: fix this shit -> output no shape attribute (Seq2SeqModelOutput type) -> done?
         # outputs = self.model(**input)
 
         # outputs_encoder_lhs = outputs.encoder_last_hidden_state
@@ -97,9 +96,10 @@ class BARTphoEncoder(Module):
         )
 
         logits = self.proj(concatenate_pooling) 
-
-        return logits
+        # logits = all_hidden_states[-1]
+        # return self.proj(logits)
         # return outputs
+        return logits
 
     def freeze(self):
         for param in self.model.parameters():

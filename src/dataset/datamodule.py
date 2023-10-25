@@ -15,9 +15,10 @@ class VQADataModule(LightningDataModule):
     def __init__(self, root_dir: str,
                 data_dir: str,
                 map_file: str,
+                val_dir: str = None,
+                val_map_file: str = None,
                 test_dir: str = None,
                 test_map_file: str = None,
-                train_val_split: Tuple[int, int] = None,
                 tokenizer = None,
                 processor= None,
                 max_length: int = 512,
@@ -46,41 +47,34 @@ class VQADataModule(LightningDataModule):
 
     def prepare_data(self) -> None:
         url = 'https://drive.google.com/drive/folders/1zNzpR8XCVwweRGExnjotwrJuCnhxfiTO'
-        output = os.getcwd()
-        if os.path.exists(os.path.join(output, 'data')):
-            if os.listdir(os.path.join(output, 'data')):
+        if os.path.exists(self.hparams.root_dir):
+            if os.listdir(self.hparams.root_dir):
                 return
         else:
-            os.makedirs(os.path.join(output, 'data'))
-        gdown.download_folder(url, output= os.path.join(output, 'data'), quiet= False, use_cookies= False)
-        with zipfile.ZipFile(os.path.join(output, 'data/training-images.zip'), 'r') as zip_ref:
-            zip_ref.extractall(os.path.join(output, 'data'))
-        with zipfile.ZipFile(os.path.join(output, 'data/dev-images.zip'), 'r') as zip_ref:
-            zip_ref.extractall(os.path.join(output, 'data'))
-        os.remove(os.path.join(output, 'data/training-images.zip'))
-        os.remove(os.path.join(output, 'data/dev-images.zip'))
+            os.makedirs(self.hparams.root_dir)
+        gdown.download_folder(url, output= self.hparams.root_dir, quiet= False, use_cookies= False)
+        with zipfile.ZipFile(os.path.join(self.hparams.root_dir, 'training-images.zip'), 'r') as zip_ref:
+            zip_ref.extractall(self.hparams.root_dir)
+        with zipfile.ZipFile(os.path.join(self.hparams.root_dir, 'dev-images.zip'), 'r') as zip_ref:
+            zip_ref.extractall(self.hparams.root_dir)
+        with zipfile.ZipFile(os.path.join(self.hparams.root_dir, 'test-images.zip'), 'r') as zip_ref:
+            zip_ref.extractall(self.hparams.root_dir)
+        os.remove(os.path.join(self.hparams.root_dir, 'training-images.zip'))
+        os.remove(os.path.join(self.hparams.root_dir, 'dev-images.zip'))
+        os.remove(os.path.join(self.hparams.root_dir, 'test-images.zip'))
 
     def setup(self, stage: Optional[str] = None) -> None:
 
         if not self.setup_called:
             self.setup_called = True
-            dataset = VQADataset(self.hparams.root_dir, map_file= self.hparams.map_file, data_dir= self.hparams.data_dir,
+            self.data_train = VQADataset(self.hparams.root_dir, map_file= self.hparams.map_file, data_dir= self.hparams.data_dir,
                                 tokenizer= self.hparams.tokenizer, processor= self.hparams.processor, 
                                 transforms= self.hparams.transforms, max_length= self.hparams.max_length
                                 )
-            if not self.hparams.train_val_split:
-                self.data_train = dataset
-                self.data_valid = VQADataset(self.hparams.root_dir, self.hparams.test_map_file, self.hparams.test_dir, 
+            self.data_valid = VQADataset(self.hparams.root_dir, self.hparams.val_map_file, self.hparams.val_dir, 
                                              tokenizer= self.hparams.tokenizer, processor= self.hparams.processor, 
                                              transforms= self.hparams.transforms, max_length= self.hparams.max_length)
-            # else:
-            #     self.data_train, self.data_valid = random_split(
-            #         dataset= dataset,
-            #         lengths= self.hparams.train_val_split,
-            #         generator= Generator().manual_seed(42)
-            #     )
-            if self.hparams.test_dir and not self.data_test:
-                self.data_test = VQADataset(self.hparams.root_dir, self.hparams.test_map_file, self.hparams.test_dir, 
+            self.data_test = VQADataset(self.hparams.root_dir, self.hparams.test_map_file, self.hparams.test_dir, 
                                             tokenizer= self.hparams.tokenizer, processor= self.hparams.processor, 
                                             transforms= self.hparams.transforms, max_length= self.hparams.max_length)
 
@@ -111,6 +105,7 @@ class VQADataModule(LightningDataModule):
             dataset= self.data_test,
             batch_size= self.hparams.batch_size,
             num_workers= self.hparams.num_workers,
+            collate_fn= self.hparams.collate_fn,
             pin_memory= self.hparams.pin_memory,
             shuffle= False
         )

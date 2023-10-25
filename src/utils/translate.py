@@ -2,6 +2,7 @@ import torch
 from tqdm import tqdm
 
 import torch
+import numpy as np
 
 class Beam:
 
@@ -105,45 +106,70 @@ class Beam:
 
 # TODO: Add beam search
 def beam(model, img, text, bos_token_id, eos_token_id, pad_token_id, max_len, beam_size= 8, min_length= 0, n_top= 1):
-    beam = Beam(beam_size, min_length, n_top, bos_token_id, eos_token_id)
+    model.eval()
     device = img.device
+    sents = []
     batch_size = img.shape[0]
+    with torch.no_grad():
+        mem, mem_mask = model.encoder_forward(text, img)
+        for i in range(batch_size):
+            new_mem = mem[:, [i], :]
+            new_mem_mask = mem_mask[[i], :]
+            sent = search(model, new_mem, new_mem_mask, device, bos_token_id, eos_token_id, pad_token_id, max_len, beam_size, min_length, n_top)
+            sents.append(sent)
+    sents = np.asarray(sents)
+    return torch.tensor(sents)
 
-    src = model.encoder_forward(text, img)
-    src = src.repeat(1, beam.beam_size, 1)
-    for _ in range(max_len):
-        tgt = beam.get_current_state().transpose(0, 1)
-        output = model.decoder_forward(src, tgt)
+def search(model, mem, mem_mask, device, bos_token_id, eos_token_id, pad_token_id, max_len, beam_size= 8, min_length= 0, n_top= 1):
+    beam = Beam(beam_size, min_length, n_top, bos_token_id, eos_token_id)
+    with torch.no_grad():
+        mem = mem.repeat(1, beam.beam_size, 1)
+        mem_mask = mem_mask.repeat(beam.beam_size, 1)
+        for _ in range(max_len):
+            tgt = beam.get_current_state().to(device)
+            output = model.decoder_forward(mem, tgt, src_attn_mask= mem_mask)
+            log_prob = torch.nn.functional.log_softmax(output[:, -1, :].squeeze(0), dim= -1)
+            beam.advance(log_prob.cpu())
+
+            if beam.done():
+                break
+        scores, ks = beam.sort_finished(minimum=1)
+        hypothesises = []
+        for i, (times, k) in enumerate(ks[:n_top]):
+            hypothesis = beam.get_hypothesis(times, k)
+            hypothesises.append(hypothesis)
+    
+    return [bos_token_id] + [int(i) for i in hypothesises[0][:-1]]
 
 def greedy(model, img, text, bos_token_id, eos_token_id, pad_token_id, max_len):
     device = img.device
 
     batch_size = img.shape[0]
 
-    src = model.encoder_forward(text, img)
+    src, src_mask = model.encoder_forward(text, img)
 
-    sent = torch.tensor([[bos_token_id] * batch_size], device= device)
+    sent = torch.tensor([[bos_token_id] * batch_size], device= device).T
 
     for _ in range(max_len):
-        output = model.decoder_forward(src, sent.T)
+        output = model.decoder_forward(src, sent, src_attn_mask= src_mask)
         output = torch.nn.functional.softmax(output, dim= -1)
 
         _, idx = torch.topk(output, 3)
 
-        idx = idx[:, -1, 0]
+        idx = idx[:, -1, 0].reshape(batch_size, -1)
 
-        sent = torch.cat([sent, idx.reshape(-1, batch_size)], 0)
+        sent = torch.cat([sent, idx], 1)
 
-    sent = sent.T.cpu().detach()
-    for i in range(sent.shape[0]):
-        idx = (sent[i] == eos_token_id).nonzero().flatten()
-        if idx.dim == 0:
-            sent = sent[i, idx[0] + 1:] = pad_token_id
+    sent = sent.cpu().detach()
+    # for i in range(sent.shape[0]):
+    #     idx = (sent[i] == eos_token_id).nonzero().flatten()
+    #     if idx.dim != 0:
+    #         sent = sent[i, idx[0] + 1:] = pad_token_id
     return sent
 
-def translate(model, img, text, bos_token_id, eos_token_id, pad_token_id, max_len, algo= 'greedy'):
+def translate(model, img, text, bos_token_id, eos_token_id, pad_token_id, max_len, algo= 'greedy', beam_size= 8, min_length= 0, n_top= 1):
     if algo == 'greedy': 
         return greedy(model, img, text, bos_token_id, eos_token_id, pad_token_id, max_len)
     elif algo == 'beam':
-        pass
+        return beam(model, img, text, bos_token_id, eos_token_id, pad_token_id, max_len, beam_size, min_length, n_top)
     raise('Searcing algorithm not implemented')

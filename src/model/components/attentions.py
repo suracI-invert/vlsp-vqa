@@ -4,7 +4,11 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 
+import numpy as np
 import math
+
+from torch_geometric.nn import GCNConv, GATConv
+from torch_geometric.nn import global_mean_pool
 
 class DropPath(nn.Module):
     """
@@ -228,6 +232,36 @@ class ResidualConnection(nn.Module):
             x = self.norm(x + self.dropout(sublayer(x)))
         return x
 
+class TransformerEncoderLayer(nn.Module):
+    def __init__(self, 
+            vocab_size,
+            d_model,
+            nhead,
+            dim_feedforward,
+            num_layers,
+            act, norm_first= False,
+            dropout= 0.1
+        ):
+        super().__init__()
+
+        self.d_model = d_model
+        encoder_layer = nn.TransformerEncoderLayer(
+            d_model,
+            nhead,
+            dim_feedforward,
+            dropout,
+            act(),
+            norm_first
+        )
+
+        self.transformer_encoder = nn.TransformerEncoder(
+            encoder_layer,
+            num_layers,
+        )
+    
+    def forward(self, x, mask):
+        x = self.transformer_encoder(x, src_key_padding_mask= mask)
+        return x
 
 class TransformerDecoderLayer(nn.Module):
     def __init__(self,
@@ -250,7 +284,7 @@ class TransformerDecoderLayer(nn.Module):
         decoder_layer = nn.TransformerDecoderLayer(
             d_model = d_model,
             nhead = nhead,
-            activation= act,
+            activation= act(),
             dim_feedforward = dim_feedforward,
             norm_first= norm_first,
             dropout= dropout
@@ -261,21 +295,28 @@ class TransformerDecoderLayer(nn.Module):
             num_layers = num_layers
         )
 
-    def forward(self, src, tgt, tgt_attn_mask= None):
-        tgt_padding_mask = (tgt_attn_mask == 0).to(tgt.device) if tgt_attn_mask is not None else None
+        self.nhead = nhead
+
+    def forward(self, src, tgt, src_attn_mask= None, tgt_attn_mask= None):
         # tgt_padding_mask = tgt_padding_mask.to(tgt.device)
         tgt = tgt.transpose(0, 1)
-        tgt_seq_len = tgt.shape[0]
-        subsequent_mask = self.gen_mask(tgt_seq_len).to(tgt.device)
+        subsequent_mask = self.gen_mask(tgt, self.nhead, tgt_attn_mask).to(tgt.device)
         tgt = self.pos_enc(self.emb(tgt) * math.sqrt(self.d_model))
-        output = self.transformer_decoder(tgt, src, tgt_mask=subsequent_mask, tgt_key_padding_mask= tgt_padding_mask)
+        output = self.transformer_decoder(tgt, src, memory_key_padding_mask= src_attn_mask, tgt_mask= subsequent_mask)
         
         return output.transpose(0, 1)
     
-    def gen_mask(self, tgt_len):
-        subsequent_mask = torch.triu(torch.ones(tgt_len, tgt_len) == 1).transpose(0, 1)
-        subsequent_mask = subsequent_mask.float().masked_fill(subsequent_mask == 0, float('-inf')).masked_fill(subsequent_mask == 1, float(0.0))
-        return subsequent_mask
+    def gen_mask(self, tgt, num_head, key_padding= None):
+        "Mask out subsequent positions. tgt shape: (T, N)"
+        device = tgt.device
+        size, batch_size = tgt.shape[0], tgt.shape[1]
+        key_padding = (key_padding == 0) if key_padding is not None else torch.zeros((batch_size, size), dtype= torch.bool)
+        key_padding = key_padding.unsqueeze(1).repeat([1, size, 1]).to(device)
+        attn_shape = (batch_size, size, size)
+        subsequent_mask = np.triu(np.ones(attn_shape), k=1).astype('uint8')
+        subsequent_mask = (torch.from_numpy(subsequent_mask).to(device) | key_padding) == 1
+        # According to pytorch test case this is how 3d mask is stacked: https://github.com/pytorch/pytorch/blob/c74c0c571880df886474be297c556562e95c00e0/test/test_nn.py#L5039 line 5039
+        return torch.repeat_interleave(subsequent_mask, num_head, dim= 0)
 
 class PositionalEncoding(nn.Module):
     def __init__(self, d_model, dropout=0.1, max_len= 5000):
@@ -298,6 +339,11 @@ class PositionalEncoding(nn.Module):
 class GuidedAttention(nn.Module):
     def __init__(self, dim, nheads, dropout, hidden_dim, act, norm_first= False):
         super().__init__()
+        self.d_model = dim
+
+        self.img_pos = PositionalEncoding(dim, dropout)
+        # self.text_pos = PositionalEncoding(dim, dropout)
+
         self.text_attn = nn.MultiheadAttention(dim, nheads, dropout)
         self.img_attn = nn.MultiheadAttention(dim, nheads, dropout) 
         
@@ -317,7 +363,7 @@ class GuidedAttention(nn.Module):
 
         self.img_ffn = nn.Sequential(
             nn.Linear(dim, hidden_dim),
-            act,
+            act(),
             nn.Dropout(dropout),
             nn.Linear(hidden_dim, dim),
         )
@@ -327,7 +373,7 @@ class GuidedAttention(nn.Module):
 
         self.text_ffn = nn.Sequential(
             nn.Linear(dim, hidden_dim),
-            act,
+            act(),
             nn.Dropout(dropout),
             nn.Linear(hidden_dim, dim),
         )
@@ -335,16 +381,16 @@ class GuidedAttention(nn.Module):
         # self.text_ffn_norm = nn.LayerNorm(dim)
         self.text_ffn_res = ResidualConnection(dim, dropout, norm_first)
 
-    def forward(self, inp):
-        img, text = inp
+    def forward(self, img, text, text_mask):
         # text = self.text_norm(self.text_drop(text + self.text_attn(text, text, text)[0]))
-        text = self.text_attn_res(text, lambda text: self.text_attn(text, text, text)[0])
+        text = self.text_attn_res(text, lambda text: self.text_attn(text, text, text, key_padding_mask= text_mask)[0])
 
         # img = self.img_norm(self.img_drop(img + self.img_attn(img, img, img)[0]))
+        img = self.img_pos(img * math.sqrt(self.d_model))
         img = self.img_attn_res(img, lambda img: self.img_attn(img, img, img)[0])
 
         # ga = self.ga_norm(self.ga_drop(img + self.ga(img, text, text)[0]))
-        ga = self.ga_res(img, lambda img: self.ga(img, text, text)[0])
+        ga = self.ga_res(img, lambda img: self.ga(img, text, text, key_padding_mask= text_mask)[0])
 
         # text = self.text_ffn_norm(self.text_ffn_drop(text + self.text_ffn(text)))
         text = self.text_ffn_res(text, lambda text: self.text_ffn(text))
@@ -352,3 +398,222 @@ class GuidedAttention(nn.Module):
         img = self.img_ffn_res(ga, lambda ga: self.img_ffn(ga))
 
         return ((img, text))
+    
+class GuidedAttentionV2(nn.Module):
+    def __init__(self, dim, nheads, dropout, hidden_dim, act, norm_first= False):
+        super().__init__()
+        self.d_model = dim
+
+        # self.text_pos = PositionalEncoding(dim, dropout)
+
+        # self.text_attn = nn.MultiheadAttention(dim, nheads, dropout)
+        self.img_attn = nn.MultiheadAttention(dim, nheads, dropout) 
+        # self.text_drop = nn.Dropout(dropout)
+        # self.img_drop = nn.Dropout(dropout)
+
+        # self.text_norm = nn.LayerNorm(dim)
+        # self.img_norm = nn.LayerNorm(dim)
+
+        self.img_attn_res = ResidualConnection(dim, dropout, norm_first)
+
+        self.ga = nn.MultiheadAttention(dim, nheads, dropout)
+        # self.ga_drop = nn.Dropout(dropout)
+        # self.ga_norm = nn.LayerNorm(dim)
+        self.ga_res = ResidualConnection(dim, dropout, norm_first)
+
+        self.img_ffn = nn.Sequential(
+            nn.Linear(dim, hidden_dim),
+            act(),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_dim, dim),
+        )
+        # self.img_ffn_drop = nn.Dropout(dropout)
+        # self.img_ffn_norm = nn.LayerNorm(dim)
+        self.img_ffn_res = ResidualConnection(dim, dropout, norm_first)
+
+    def forward(self, img, text, text_mask):
+        # text = self.text_norm(self.text_drop(text + self.text_attn(text, text, text)[0]))
+
+        # img = self.img_norm(self.img_drop(img + self.img_attn(img, img, img)[0]))
+        # img = self.img_pos(img * math.sqrt(self.d_model))
+        img = self.img_attn_res(img, lambda img: self.img_attn(img, img, img)[0])
+
+        # ga = self.ga_norm(self.ga_drop(img + self.ga(img, text, text)[0]))
+        ga = self.ga_res(img, lambda img: self.ga(img, text, text, key_padding_mask= text_mask)[0])
+
+        # text = self.text_ffn_norm(self.text_ffn_drop(text + self.text_ffn(text)))
+        # img = self.img_ffn_norm(self.img_ffn_drop(ga + self.img_ffn(ga)))
+        img = self.img_ffn_res(ga, lambda ga: self.img_ffn(ga))
+
+        return (img)
+    
+class OCRFuseLayer(nn.Module):
+    def __init__(self, dim, nheads, dropout, norm_first, hidden_dim, act):
+        super().__init__()
+        
+        self.ocr_self_attn = nn.MultiheadAttention(dim, nheads, dropout)
+        self.ocr_self_attn_res = ResidualConnection(dim, dropout, norm_first)
+        self.cross_attn = nn.MultiheadAttention(dim, nheads, dropout)
+        self.cross_attn_res = ResidualConnection(dim, dropout, norm_first)
+        self.ffn = nn.Sequential(
+            nn.Linear(dim, hidden_dim),
+            act(),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_dim, dim),
+        )
+        self.ffn_res = ResidualConnection(dim, dropout, norm_first)
+
+    def forward(self, ocr, text, ocr_attn_mask= None, text_attn_mask= None):
+        ocr = self.ocr_self_attn_res(ocr, lambda ocr: self.ocr_self_attn(ocr, ocr, ocr, key_padding_mask= ocr_attn_mask)[0])
+        ocr = self.cross_attn_res(ocr, lambda ocr: self.cross_attn(ocr, text, text, key_padding_mask= text_attn_mask)[0])
+        ocr = self.ffn_res(ocr, lambda ocr: self.ffn(ocr))
+        return ocr
+    
+class OCRFuse(nn.Module):
+    def __init__(self, embedding, num_layer, dim, nheads, dropout, norm_first, hidden_dim, act):
+        super().__init__()
+        self.emb = embedding
+        self.layers = nn.ModuleList([
+            OCRFuseLayer(dim, nheads, dropout, norm_first, hidden_dim, act)
+            for _ in range(num_layer)
+        ])
+    
+    def forward(self, ocr, text, ocr_attn_mask= None, text_attn_mask= None):
+        """
+            mask should be bool (False if not pad token)
+        """
+        ocr_feature = self.emb(ocr).permute(1, 0, 2)
+        for l in self.layers:
+            ocr_feature = l(ocr_feature, text, ocr_attn_mask, text_attn_mask)
+        return ocr_feature
+    
+class Compound(nn.Module):
+    def __init__(self, dim, nhead, hidden_dim, act, dropout, norm_first):
+        super().__init__()
+
+        self.img_cross_attn = nn.MultiheadAttention(
+            embed_dim= dim,
+            num_heads= nhead,
+            dropout= dropout
+        )
+        self.img_cross_attn_res = ResidualConnection(dim, dropout, norm_first)
+
+        self.img_fnn = nn.Sequential(
+            nn.Linear(dim, hidden_dim),
+            act(),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_dim, dim)
+        )
+        self.img_fnn_res = ResidualConnection(dim, dropout)
+
+        self.text_cross_attn = nn.MultiheadAttention(
+            embed_dim= dim,
+            num_heads= nhead,
+            dropout= dropout
+        )   
+        self.text_cross_attn_res = ResidualConnection(dim, dropout, norm_first)
+        self.text_fnn = nn.Sequential(
+            nn.Linear(dim, hidden_dim),
+            act(),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_dim, dim)
+        )
+
+        self.text_fnn_res = ResidualConnection(dim, dropout)
+
+    def forward(self, text, img, text_attn):
+        """
+            input should have dim/2 for concatenation
+        """
+        text_feature = self.text_cross_attn_res(text, lambda text: self.text_cross_attn(text, img, img)[0])
+        text_feature = self.text_fnn_res(text_feature, lambda text_feature: self.text_fnn(text_feature))
+        text_feature = torch.cat([text, text_feature], dim= -1)
+
+        img_feature = self.img_cross_attn_res(img, lambda img: self.img_cross_attn(img, text, text, key_padding_mask= text_attn)[0])
+        img_feature = self.img_fnn_res(img_feature, lambda img_feature: self.img_fnn(img_feature))
+        img_feature = torch.cat([img, img_feature], dim= -1)
+
+        return (img_feature, text_feature)
+
+class CompoundOCR(nn.Module):
+    def __init__(self, dim, nhead, hidden_dim, act, dropout, norm_first):
+        super().__init__()
+
+        self.img_cross_attn = nn.MultiheadAttention(
+            embed_dim= dim,
+            num_heads= nhead,
+            dropout= dropout
+        )
+        self.img_cross_attn_res = ResidualConnection(dim, dropout, norm_first)
+
+        self.img_fnn = nn.Sequential(
+            nn.Linear(dim, hidden_dim),
+            act(),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_dim, dim)
+        )
+        self.img_fnn_res = ResidualConnection(dim, dropout)
+
+        self.text_cross_attn = nn.MultiheadAttention(
+            embed_dim= dim,
+            num_heads= nhead,
+            dropout= dropout
+        )   
+        self.text_cross_attn_res = ResidualConnection(dim, dropout, norm_first)
+        self.text_fnn = nn.Sequential(
+            nn.Linear(dim, hidden_dim),
+            act(),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_dim, dim)
+        )
+        self.text_fnn_res = ResidualConnection(dim, dropout)
+
+        self.ocr_cross_attn = nn.MultiheadAttention(
+            embed_dim= dim,
+            num_heads= nhead,
+            dropout= dropout
+        )
+        self.ocr_cross_attn_res = ResidualConnection(dim, dropout, norm_first)
+        self.ocr_fnn = nn.Sequential(
+            nn.Linear(dim, hidden_dim),
+            act(),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_dim, dim)
+        )
+        self.ocr_fnn_res = ResidualConnection(dim, dropout)
+
+
+    def forward(self, text, img, ocr, text_attn):
+        """
+            input should have dim/2 for concatenation
+        """
+        text_feature = self.text_cross_attn_res(text, lambda text: self.text_cross_attn(text, img, img)[0])
+        text_feature = self.text_fnn_res(text_feature, lambda text_feature: self.text_fnn(text_feature))
+        text_feature = torch.cat([text, text_feature], dim= -1)
+
+        ocr_feature = self.ocr_cross_attn_res(ocr, lambda ocr: self.ocr_cross_attn(ocr, text, text, key_padding_mask= text_attn)[0])
+        ocr_feature = self.ocr_fnn_res(ocr_feature, lambda ocr_feature: self.ocr_fnn(ocr_feature))
+        ocr_feature = torch.cat([ocr, ocr_feature], dim= -1)
+
+        img_feature = self.img_cross_attn_res(img, lambda img: self.img_cross_attn(img, text, text, key_padding_mask= text_attn)[0])
+        img_feature = self.img_fnn_res(img_feature, lambda img_feature: self.img_fnn(img_feature))
+        img_feature = torch.cat([img, img_feature], dim= -1)
+        
+        return (img_feature, text_feature, ocr_feature)
+
+class GAT(nn.Module):
+    def __init__(self, embedding, hidden_channels, dropout= 0.2):
+        super().__init__()
+        self.emb = embedding
+        vocab_size, d_model = self.emb.weight.shape
+        self.conv1 = GATConv(d_model, d_model, dropout= dropout)
+        self.conv2 = GATConv(d_model, hidden_channels, dropout= dropout)
+
+    def forward(self, node_ids, edge_index):
+        x = self.emb(node_ids)
+        x = self.conv1(x, edge_index)
+        x = x.relu()
+        x = self.conv2(x, edge_index)
+        
+        # x = global_mean_pool(x, batch)  # [batch_size, hidden_channels]??
+        return x

@@ -43,6 +43,7 @@ class BARTphoEncoder(Module):
     BARTpho Encoder for question
         - pretrained: name of pretrained weights
     """
+    # TODO: seperate decoder and encoder
     def __init__(
         self,
         pretrained = 'vinai/bartpho-syllable-base', # Can change to word or syllable
@@ -57,7 +58,7 @@ class BARTphoEncoder(Module):
             nn.LayerNorm(hidden_dim),
         )
 
-        for p in self.model.decoder.parameters():
+        for p in self.model.get_decoder().parameters():
             p.requires_grad = False
 
     def forward(self, input):
@@ -69,7 +70,6 @@ class BARTphoEncoder(Module):
         # input.pop('token_type_ids', None)
 
         # ------------------------------------------------------------------------------------
-        # TODO: fix this shit -> output no shape attribute (Seq2SeqModelOutput type) -> done?
         # outputs = self.model(**input)
 
         # outputs_encoder_lhs = outputs.encoder_last_hidden_state
@@ -88,15 +88,17 @@ class BARTphoEncoder(Module):
 
         # Return 4 layers of encoder concatinated for better performance
         # See: https://www.kaggle.com/code/rhtsingh/utilizing-transformer-representations-efficiently
-        outputs = self.model(input['input_ids'], input['attention_mask'], output_hidden_states= True, return_dict= True)
-        all_hidden_states = outputs.encoder_hidden_states
+        outputs = self.model.get_encoder()(input['input_ids'], input['attention_mask'], output_hidden_states= True, return_dict= True)
+        all_hidden_states = outputs.hidden_states
 
         concatenate_pooling = torch.cat(
-            (all_hidden_states[-2], all_hidden_states[-3], all_hidden_states[-4], all_hidden_states[-5]), -1
+            (all_hidden_states[-1], all_hidden_states[-2], all_hidden_states[-3], all_hidden_states[-4]), -1
         )
 
         logits = self.proj(concatenate_pooling) 
-
+        # logits = all_hidden_states[-1]
+        # return self.proj(logits)
+        # return outputs
         return logits
 
     def freeze(self):
